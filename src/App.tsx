@@ -1,6 +1,6 @@
 // force rebuild
 
-import React, { useState, useRef, useEffect, type ChangeEvent } from 'react';
+import React, { useState, useRef, type ChangeEvent } from 'react';
 import { 
   Upload, AlertCircle, CheckCircle2, Droplet, 
   Activity, Utensils, Coffee, Heart, Printer, 
@@ -134,19 +134,8 @@ export default function App() {
   const [aiResult, setAiResult] = useState<AiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [apiKey, setApiKey] = useState<string>('');
-  const [apiSavedMsg, setApiSavedMsg] = useState<string | null>(null);
 
   const t = translations[lang];
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('gemini_api_key');
-      if (stored) setApiKey(stored);
-    } catch (err) {
-      // ignore localStorage errors
-    }
-  }, []);
 
   // ฟังก์ชันย่อขนาดภาพ ป้องกันเว็บค้าง
   const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
@@ -198,12 +187,7 @@ export default function App() {
 
   const analyzeImage = async (base64: string) => {
     setError(null);
-    const apiKeyToUse = apiKey || (import.meta.env.VITE_GEMINI_API_KEY as string) || ''; // prefer localStorage key
-
-    if (!apiKeyToUse) {
-      showMockData(t.errNoKey);
-      return;
-    }
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
 
     const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm". 
     Analyze this honey image and estimate the top 3 possible honey types.
@@ -232,7 +216,7 @@ export default function App() {
     const base64Data = base64.split(',')[1] ?? '';
 
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKeyToUse}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -270,44 +254,8 @@ export default function App() {
       }
     } catch (err) {
       console.error("AI Analysis Failed:", err);
-      showMockData(t.errNoKey); 
+      setError('การวิเคราะห์ AI ล้มเหลว กรุณาลองใหม่');
     }
-  };
-
-  const showMockData = (errorMessage: string | null) => {
-    let mockData: AiResult | Record<string, unknown> = {};
-    if(lang === 'en') {
-      mockData = {
-        predictions: [{ type: "Longan Honey", percentage: 81 }, { type: "Coffee Honey", percentage: 12 }, { type: "Wildflower Honey", percentage: 7 }],
-        conclusion_reason: "Based on the rich golden-amber color and consistent viscosity, which is a prominent characteristic of pure Longan honey.",
-        characteristics: { color: "Golden Amber", clarity: "Medium Clear", viscosity: "Consistently Thick" },
-        naturalnessScore: 85,
-        benefits: ["Provides natural energy", "Contains antioxidants", "Good sugar substitute", "Great for health enthusiasts"],
-        usages: ["Mix with tea/coffee", "Baking", "Cooking", "Skin care products"]
-      };
-    } else if (lang === 'zh') {
-      mockData = {
-        predictions: [{ type: "龙眼蜜", percentage: 81 }, { type: "咖啡蜜", percentage: 12 }, { type: "百花蜜", percentage: 7 }],
-        conclusion_reason: "基于丰富的金琥珀色和一致的粘稠度，这是纯龙眼蜜的突出特征。",
-        characteristics: { color: "金琥珀色", clarity: "中等清澈", viscosity: "持续浓稠" },
-        naturalnessScore: 85,
-        benefits: ["提供自然能量", "含有抗氧化剂", "良好的糖替代品", "非常适合健康爱好者"],
-        usages: ["搭配茶/咖啡", "烘焙", "烹饪", "护肤产品"]
-      };
-    } else {
-      mockData = {
-        predictions: [{ type: "น้ำผึ้งดอกลำไย", percentage: 81 }, { type: "น้ำผึ้งดอกกาแฟ", percentage: 12 }, { type: "น้ำผึ้งดอกไม้ป่า", percentage: 7 }],
-        conclusion_reason: "ประเมินจากลักษณะสีเหลืองทองอำพันที่เข้มข้น และความหนืดที่สม่ำเสมอ ซึ่งเป็นเอกลักษณ์ที่โดดเด่นของน้ำผึ้งดอกลำไยแท้",
-        characteristics: { color: "เหลืองทองอำพัน", clarity: "ใสปานกลาง", viscosity: "ข้นหนืดสม่ำเสมอ" },
-        naturalnessScore: 85,
-        benefits: ["ให้พลังงานจากธรรมชาติ", "มีสารต้านอนุมูลอิสระ", "ใช้แทนน้ำตาลได้ดี", "เหมาะสำหรับผู้รักสุขภาพ"],
-        usages: ["ชงชา / กาแฟ", "เบเกอรี่", "ประกอบอาหาร", "ผลิตภัณฑ์ดูแลผิว"]
-      };
-    }
-    
-    setAiResult(mockData as AiResult);
-    setError(errorMessage);
-    setScreen('result');
   };
 
   return (
@@ -352,50 +300,6 @@ export default function App() {
 
         </div>
       </header>
-
-      {/* API Key input banner */}
-      <div className="w-full bg-amber-50 border-b border-amber-200">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-3">
-          <div className="text-amber-800 text-sm font-medium">Gemini API Key:</div>
-          <input
-            type="password"
-            placeholder="Paste your Gemini API key here"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            className="flex-1 bg-white border border-amber-200 px-3 py-2 rounded-md text-sm outline-none"
-          />
-          <button
-            onClick={() => {
-              try {
-                localStorage.setItem('gemini_api_key', apiKey);
-                setApiSavedMsg('บันทึกแล้ว');
-                setTimeout(() => setApiSavedMsg(null), 2500);
-              } catch (err) {
-                setApiSavedMsg('ไม่สามารถบันทึกได้');
-              }
-            }}
-            className="bg-amber-600 text-white px-3 py-2 rounded-md text-sm font-medium"
-          >
-            บันทึก
-          </button>
-          <button
-            onClick={() => {
-              try {
-                localStorage.removeItem('gemini_api_key');
-              } catch (err) {
-                // ignore
-              }
-              setApiKey('');
-              setApiSavedMsg('ลบแล้ว');
-              setTimeout(() => setApiSavedMsg(null), 2000);
-            }}
-            className="bg-white border border-amber-200 text-amber-800 px-3 py-2 rounded-md text-sm font-medium"
-          >
-            ลบ
-          </button>
-          {apiSavedMsg && <div className="text-amber-800 text-sm ml-3">{apiSavedMsg}</div>}
-        </div>
-      </div>
 
       <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         
