@@ -173,7 +173,7 @@ export default function App() {
 
   const analyzeImage = async (base64) => {
     setError(null);
-    const apiKey = ""; // 🔴 ใส่ API KEY ของคุณตรงนี้เพื่อใช้งานจริง 🔴
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY; // 🔴 ใส่ API KEY ของคุณตรงนี้เพื่อใช้งานจริง
 
     if (!apiKey) {
       showMockData(t.errNoKey);
