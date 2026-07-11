@@ -1,6 +1,6 @@
 // force rebuild
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, type ChangeEvent } from 'react';
 import { 
   Upload, AlertCircle, CheckCircle2, Droplet, 
   Activity, Utensils, Coffee, Heart, Printer, 
@@ -117,23 +117,33 @@ const translations = {
   }
 };
 
+type Prediction = { type: string; percentage: number };
+
+type AiResult = {
+  predictions: Prediction[];
+  conclusion_reason: string;
+  characteristics: { color: string; clarity: string; viscosity: string };
+  naturalnessScore: number;
+  benefits: string[];
+  usages: string[];
+};
 export default function App() {
-  const [lang, setLang] = useState('th'); 
-  const [screen, setScreen] = useState('home'); 
-  const [imageSrc, setImageSrc] = useState(null);
-  const [aiResult, setAiResult] = useState(null);
-  const [error, setError] = useState(null);
-  const fileInputRef = useRef(null);
+  const [lang, setLang] = useState<'th' | 'en' | 'zh'>('th');
+  const [screen, setScreen] = useState<string>('home');
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [aiResult, setAiResult] = useState<AiResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = translations[lang];
 
   // ฟังก์ชันย่อขนาดภาพ ป้องกันเว็บค้าง
-  const compressImage = (base64Str, maxWidth = 800, maxHeight = 800) => {
+  const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
     return new Promise((resolve) => {
-      let img = new Image();
+      const img = new Image();
       img.src = base64Str;
       img.onload = () => {
-        let canvas = document.createElement('canvas');
+        const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
 
@@ -150,23 +160,25 @@ export default function App() {
         }
         canvas.width = width;
         canvas.height = height;
-        let ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(base64Str);
         ctx.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/jpeg', 0.8));
       };
+      img.onerror = () => resolve(base64Str);
     });
   };
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
+  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
-    setScreen('analyzing'); 
-    
+    setScreen('analyzing');
+
     const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64String = event.target.result;
-      setImageSrc(base64String); 
+    reader.onload = async (event: ProgressEvent<FileReader>) => {
+      const base64String = (event.target?.result as string) || '';
+      setImageSrc(base64String);
       const compressedBase64 = await compressImage(base64String);
       analyzeImage(compressedBase64);
     };
@@ -175,7 +187,7 @@ export default function App() {
 
   const analyzeImage = async (base64) => {
     setError(null);
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;; // 🔴 ใส่ API KEY ของคุณตรงนี้เพื่อใช้งานจริง
+    const apiKey = (import.meta.env.VITE_GEMINI_API_KEY as string) || ''; // 🔴 ใส่ API KEY ของคุณตรงนี้เพื่อใช้งานจริง
 
     if (!apiKey) {
       showMockData(t.errNoKey);
@@ -206,7 +218,7 @@ export default function App() {
 
     const mimeMatch = base64.match(/data:(.*?);base64/);
     const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
-    const base64Data = base64.split(',')[1];
+    const base64Data = base64.split(',')[1] ?? '';
 
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
@@ -240,7 +252,7 @@ export default function App() {
           usages: parsedData.usages && parsedData.usages.length > 0 ? parsedData.usages : ["-"]
         };
 
-        setAiResult(safeData);
+        setAiResult(safeData as AiResult);
         setScreen('result');
       } else {
         throw new Error("No data returned");
@@ -251,8 +263,8 @@ export default function App() {
     }
   };
 
-  const showMockData = (errorMessage) => {
-    let mockData = {};
+  const showMockData = (errorMessage: string | null) => {
+    let mockData: AiResult | Record<string, unknown> = {};
     if(lang === 'en') {
       mockData = {
         predictions: [{ type: "Longan Honey", percentage: 81 }, { type: "Coffee Honey", percentage: 12 }, { type: "Wildflower Honey", percentage: 7 }],
@@ -282,7 +294,7 @@ export default function App() {
       };
     }
     
-    setAiResult(mockData);
+    setAiResult(mockData as AiResult);
     setError(errorMessage);
     setScreen('result');
   };
@@ -299,7 +311,7 @@ export default function App() {
               src="/logo.jpg" 
               alt="Honey Dee Logo" 
               className="w-10 h-10 sm:w-16 sm:h-16 object-contain"
-              onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                     onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
             <div className="hidden bg-gradient-to-br from-amber-400 to-amber-600 p-2 rounded-xl shadow-sm items-center justify-center">
               <Droplet className="text-white w-5 h-5 sm:w-7 sm:h-7 fill-white" />
@@ -345,10 +357,10 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6 md:gap-8 items-start">
               <div className="md:col-span-3 order-1">
                 <div 
-                  onClick={() => fileInputRef.current.click()}
+                  onClick={() => fileInputRef.current?.click()}
                   className="bg-white border-2 border-dashed border-amber-300 hover:border-amber-500 hover:bg-amber-50/80 transition-all rounded-3xl p-8 sm:p-14 flex flex-col items-center justify-center cursor-pointer min-h-[250px] shadow-sm group"
                 >
-                  <div className="bg-amber-100 p-4 sm:p-5 rounded-full mb-4 sm:mb-6 group-hover:scale-110 transition-transform duration-300">
+                   <div className="bg-amber-100 p-4 sm:p-5 rounded-full mb-4 sm:mb-6 group-hover:scale-110 transition-transform duration-300">
                     <Upload className="w-8 h-8 sm:w-10 sm:h-10 text-amber-600" />
                   </div>
                   <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2 text-center">{t.uploadTitle}</h3>
