@@ -1,6 +1,7 @@
 // force rebuild
 
-import React, { useState, useRef, type ChangeEvent } from 'react';
+import { useState, useRef, type ChangeEvent } from 'react';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { 
   Upload, AlertCircle, CheckCircle2, Droplet, 
   Activity, Utensils, Coffee, Heart, Printer, 
@@ -129,8 +130,8 @@ type AiResult = {
 };
 export default function App() {
   const [lang, setLang] = useState<'th' | 'en' | 'zh'>('th');
-  const [screen, setScreen] = useState<string>('home');
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [screen, setScreen] = useState<'home' | 'analyzing' | 'result'>('home');
+  const [imageSrc, setImageSrc] = useState<string>('');
   const [aiResult, setAiResult] = useState<AiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -188,6 +189,13 @@ export default function App() {
   const analyzeImage = async (base64: string) => {
     setError(null);
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
+    if (!apiKey) {
+      setError('VITE_GEMINI_API_KEY ไม่ได้ตั้งค่า');
+      return;
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm". 
     Analyze this honey image and estimate the top 3 possible honey types.
@@ -212,48 +220,41 @@ export default function App() {
     }`;
 
     const mimeMatch = base64.match(/data:(.*?);base64/);
-    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
     const base64Data = base64.split(',')[1] ?? '';
 
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            role: "user",
-            parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64Data } }]
-          }],
-          generationConfig: { responseMimeType: "application/json" }
-        })
+      const response = await model.generateContent({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType, data: base64Data } }
+          ]
+        }],
+        generationConfig: { responseMimeType: 'application/json' }
       });
 
-      if (!response.ok) throw new Error(`API Error: ${response.status}`);
-
-      const result = await response.json();
-      let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (text) {
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsedData = JSON.parse(text);
-        
-        // Fallback ถ้า AI ตอบกลับข้อมูลมาไม่ครบ
-        const safeData = {
-          predictions: parsedData.predictions || [{type: '-', percentage: 0}],
-          conclusion_reason: parsedData.conclusion_reason || "-",
-          characteristics: parsedData.characteristics || { color: "-", clarity: "-", viscosity: "-" },
-          naturalnessScore: parsedData.naturalnessScore || 0,
-          benefits: parsedData.benefits && parsedData.benefits.length > 0 ? parsedData.benefits : ["-"],
-          usages: parsedData.usages && parsedData.usages.length > 0 ? parsedData.usages : ["-"]
-        };
-
-        setAiResult(safeData as AiResult);
-        setScreen('result');
-      } else {
-        throw new Error("No data returned");
+      const text = response?.response?.text?.() || '';
+      if (!text) {
+        throw new Error('No data returned');
       }
+
+      const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsedData = JSON.parse(cleanText);
+      const safeData = {
+        predictions: parsedData.predictions || [{ type: '-', percentage: 0 }],
+        conclusion_reason: parsedData.conclusion_reason || '-',
+        characteristics: parsedData.characteristics || { color: '-', clarity: '-', viscosity: '-' },
+        naturalnessScore: parsedData.naturalnessScore || 0,
+        benefits: parsedData.benefits && parsedData.benefits.length > 0 ? parsedData.benefits : ['-'],
+        usages: parsedData.usages && parsedData.usages.length > 0 ? parsedData.usages : ['-']
+      };
+
+      setAiResult(safeData as AiResult);
+      setScreen('result');
     } catch (err) {
-      console.error("AI Analysis Failed:", err);
+      console.error('AI Analysis Failed:', err);
       setError('การวิเคราะห์ AI ล้มเหลว กรุณาลองใหม่');
     }
   };
@@ -288,7 +289,7 @@ export default function App() {
               <Globe className="w-4 h-4 text-amber-600 hidden sm:block" />
               <select 
                 value={lang} 
-                onChange={(e) => setLang(e.target.value)}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) => setLang(e.target.value as 'th' | 'en' | 'zh')}
                 className="bg-transparent border-none text-[11px] sm:text-sm font-bold text-amber-900 outline-none cursor-pointer"
               >
                 <option value="th">🇹🇭 ไทย</option>
