@@ -1,6 +1,6 @@
 // force rebuild
 
-import React, { useState, useRef, type ChangeEvent } from 'react';
+import React, { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import { 
   Upload, AlertCircle, CheckCircle2, Droplet, 
   Activity, Utensils, Coffee, Heart, Printer, 
@@ -134,8 +134,19 @@ export default function App() {
   const [aiResult, setAiResult] = useState<AiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiSavedMsg, setApiSavedMsg] = useState<string | null>(null);
 
   const t = translations[lang];
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('gemini_api_key');
+      if (stored) setApiKey(stored);
+    } catch (err) {
+      // ignore localStorage errors
+    }
+  }, []);
 
   // ฟังก์ชันย่อขนาดภาพ ป้องกันเว็บค้าง
   const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
@@ -185,11 +196,11 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  const analyzeImage = async (base64) => {
+  const analyzeImage = async (base64: string) => {
     setError(null);
-    const apiKey = (import.meta.env.VITE_GEMINI_API_KEY as string) || ''; // 🔴 ใส่ API KEY ของคุณตรงนี้เพื่อใช้งานจริง
+    const apiKeyToUse = apiKey || (import.meta.env.VITE_GEMINI_API_KEY as string) || ''; // prefer localStorage key
 
-    if (!apiKey) {
+    if (!apiKeyToUse) {
       showMockData(t.errNoKey);
       return;
     }
@@ -221,7 +232,7 @@ export default function App() {
     const base64Data = base64.split(',')[1] ?? '';
 
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKeyToUse}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -341,6 +352,50 @@ export default function App() {
 
         </div>
       </header>
+
+      {/* API Key input banner */}
+      <div className="w-full bg-amber-50 border-b border-amber-200">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-3">
+          <div className="text-amber-800 text-sm font-medium">Gemini API Key:</div>
+          <input
+            type="password"
+            placeholder="Paste your Gemini API key here"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            className="flex-1 bg-white border border-amber-200 px-3 py-2 rounded-md text-sm outline-none"
+          />
+          <button
+            onClick={() => {
+              try {
+                localStorage.setItem('gemini_api_key', apiKey);
+                setApiSavedMsg('บันทึกแล้ว');
+                setTimeout(() => setApiSavedMsg(null), 2500);
+              } catch (err) {
+                setApiSavedMsg('ไม่สามารถบันทึกได้');
+              }
+            }}
+            className="bg-amber-600 text-white px-3 py-2 rounded-md text-sm font-medium"
+          >
+            บันทึก
+          </button>
+          <button
+            onClick={() => {
+              try {
+                localStorage.removeItem('gemini_api_key');
+              } catch (err) {
+                // ignore
+              }
+              setApiKey('');
+              setApiSavedMsg('ลบแล้ว');
+              setTimeout(() => setApiSavedMsg(null), 2000);
+            }}
+            className="bg-white border border-amber-200 text-amber-800 px-3 py-2 rounded-md text-sm font-medium"
+          >
+            ลบ
+          </button>
+          {apiSavedMsg && <div className="text-amber-800 text-sm ml-3">{apiSavedMsg}</div>}
+        </div>
+      </div>
 
       <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         
