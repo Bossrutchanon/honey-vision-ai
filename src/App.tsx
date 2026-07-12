@@ -135,6 +135,7 @@ export default function App() {
   const [aiResult, setAiResult] = useState<AiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const isCallingAPI = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = translations[lang];
@@ -173,25 +174,31 @@ export default function App() {
 
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
-    if (isLoading) return;
+    if (isLoading || isCallingAPI.current) return;
 
     setError(null);
 
     const file = e.target.files?.[0];
     if (!file) return;
 
+    isCallingAPI.current = true;
+
     const reader = new FileReader();
     reader.onload = async (event: ProgressEvent<FileReader>) => {
       const base64String = (event.target?.result as string) || '';
       setImageSrc(base64String);
       const compressedBase64 = await compressImage(base64String);
-      analyzeImage(compressedBase64);
+      await analyzeImage(compressedBase64);
+    };
+    reader.onerror = () => {
+      setError('ไม่สามารถอ่านไฟล์ภาพได้ กรุณาลองใหม่');
+      setIsLoading(false);
+      isCallingAPI.current = false;
     };
     reader.readAsDataURL(file);
   };
 
   const analyzeImage = async (base64: string) => {
-    if (isLoading) return;
     setIsLoading(true);
     setError(null);
     setScreen('analyzing');
@@ -200,6 +207,7 @@ export default function App() {
       setError('VITE_GEMINI_API_KEY ไม่ได้ตั้งค่า');
       setScreen('home');
       setIsLoading(false);
+      isCallingAPI.current = false;
       return;
     }
 
@@ -268,6 +276,7 @@ export default function App() {
       // keep imageSrc so the selected image remains visible
     } finally {
       setIsLoading(false);
+      isCallingAPI.current = false;
     }
   };
 
