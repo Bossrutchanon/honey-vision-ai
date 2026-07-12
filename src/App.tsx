@@ -172,7 +172,10 @@ export default function App() {
   };
 
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
     if (isLoading) return;
+
+    setError(null);
 
     const file = e.target.files?.[0];
     if (!file) return;
@@ -181,7 +184,6 @@ export default function App() {
     reader.onload = async (event: ProgressEvent<FileReader>) => {
       const base64String = (event.target?.result as string) || '';
       setImageSrc(base64String);
-      setScreen('analyzing');
       const compressedBase64 = await compressImage(base64String);
       analyzeImage(compressedBase64);
     };
@@ -196,6 +198,8 @@ export default function App() {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
     if (!apiKey) {
       setError('VITE_GEMINI_API_KEY ไม่ได้ตั้งค่า');
+      setScreen('home');
+      setIsLoading(false);
       return;
     }
 
@@ -261,7 +265,7 @@ export default function App() {
     } catch (err) {
       console.error('AI Analysis Failed:', err);
       setError('การวิเคราะห์ AI ล้มเหลว กรุณาลองใหม่');
-      setScreen('home');
+      // keep imageSrc so the selected image remains visible
     } finally {
       setIsLoading(false);
     }
@@ -338,6 +342,16 @@ export default function App() {
                   </button>
                 </div>
                 <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
+                {imageSrc && (
+                  <div className="mt-6 rounded-3xl overflow-hidden border border-slate-200 bg-slate-50">
+                    <img src={imageSrc} alt="Selected honey" className="w-full h-auto object-cover" />
+                    {error && (
+                      <div className="p-4 text-sm text-red-700 bg-red-50 border-t border-red-200">
+                        {error}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="md:col-span-2 bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 order-2">
