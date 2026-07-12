@@ -134,6 +134,7 @@ export default function App() {
   const [imageSrc, setImageSrc] = useState<string>('');
   const [aiResult, setAiResult] = useState<AiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = translations[lang];
@@ -171,6 +172,8 @@ export default function App() {
   };
 
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    if (isLoading) return;
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -178,6 +181,7 @@ export default function App() {
     reader.onload = async (event: ProgressEvent<FileReader>) => {
       const base64String = (event.target?.result as string) || '';
       setImageSrc(base64String);
+      setScreen('analyzing');
       const compressedBase64 = await compressImage(base64String);
       analyzeImage(compressedBase64);
     };
@@ -185,6 +189,8 @@ export default function App() {
   };
 
   const analyzeImage = async (base64: string) => {
+    if (isLoading) return;
+    setIsLoading(true);
     setError(null);
     setScreen('analyzing');
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
@@ -255,6 +261,9 @@ export default function App() {
     } catch (err) {
       console.error('AI Analysis Failed:', err);
       setError('การวิเคราะห์ AI ล้มเหลว กรุณาลองใหม่');
+      setScreen('home');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -316,7 +325,6 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6 md:gap-8 items-start">
               <div className="md:col-span-3 order-1">
                 <div 
-                  onClick={() => fileInputRef.current?.click()}
                   className="bg-white border-2 border-dashed border-amber-300 hover:border-amber-500 hover:bg-amber-50/80 transition-all rounded-3xl p-8 sm:p-14 flex flex-col items-center justify-center cursor-pointer min-h-[250px] shadow-sm group"
                 >
                    <div className="bg-amber-100 p-4 sm:p-5 rounded-full mb-4 sm:mb-6 group-hover:scale-110 transition-transform duration-300">
