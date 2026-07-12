@@ -342,7 +342,6 @@ export default function App() {
                       className="mt-4 bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-full font-medium shadow-md shadow-amber-500/20 transition-all text-sm sm:text-base w-full sm:w-auto"
                       type="button"
                       onClick={handleAnalyzeClick}
-                      disabled={screen === 'analyzing'}
                     >
                       {t.analyzeBtn}
                     </button>
