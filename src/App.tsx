@@ -17,7 +17,6 @@ const translations = {
     uploadTitle: "คลิกเพื่อเลือกรูปภาพน้ำผึ้ง",
     uploadDesc: "รองรับไฟล์ JPG, PNG, HEIC (ขนาดไม่เกิน 10MB)",
     uploadBtn: "อัพโหลดรูปภาพ",
-    analyzeBtn: "วิเคราะห์รูปภาพ",
     noteTitle: "ข้อควรทราบก่อนใช้งาน",
     note1Title: "ประเมินเบื้องต้นเท่านั้น",
     note1Desc: "ผลลัพธ์จาก AI ไม่สามารถใช้ยืนยันผลแทนห้องปฏิบัติการ (Lab) ได้",
@@ -53,7 +52,6 @@ const translations = {
     uploadTitle: "Click to select a honey image",
     uploadDesc: "Supports JPG, PNG, HEIC (Max 10MB)",
     uploadBtn: "Upload Image",
-    analyzeBtn: "Analyze Image",
     noteTitle: "Important Notes",
     note1Title: "Preliminary Assessment Only",
     note1Desc: "AI results cannot be used as a substitute for official laboratory tests.",
@@ -89,7 +87,6 @@ const translations = {
     uploadTitle: "点击选择蜂蜜图片",
     uploadDesc: "支持 JPG, PNG, HEIC (最大 10MB)",
     uploadBtn: "上传图片",
-    analyzeBtn: "分析图片",
     noteTitle: "使用前须知",
     note1Title: "仅供初步评估",
     note1Desc: "AI 结果不能代替官方实验室的检测结果。",
@@ -135,7 +132,6 @@ export default function App() {
   const [lang, setLang] = useState<'th' | 'en' | 'zh'>('th');
   const [screen, setScreen] = useState<'home' | 'analyzing' | 'result'>('home');
   const [imageSrc, setImageSrc] = useState<string>('');
-  const [pendingImage, setPendingImage] = useState<string>('');
   const [aiResult, setAiResult] = useState<AiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -183,14 +179,9 @@ export default function App() {
       const base64String = (event.target?.result as string) || '';
       setImageSrc(base64String);
       const compressedBase64 = await compressImage(base64String);
-      setPendingImage(compressedBase64);
+      analyzeImage(compressedBase64);
     };
     reader.readAsDataURL(file);
-  };
-
-  const handleAnalyzeClick = () => {
-    if (!pendingImage) return;
-    analyzeImage(pendingImage);
   };
 
   const analyzeImage = async (base64: string) => {
@@ -203,7 +194,7 @@ export default function App() {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm". 
     Analyze this honey image and estimate the top 3 possible honey types.
@@ -337,15 +328,6 @@ export default function App() {
                   <button className="mt-6 sm:mt-8 bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-full font-medium shadow-md shadow-amber-500/20 transition-all text-sm sm:text-base w-full sm:w-auto" type="button" onClick={() => fileInputRef.current?.click()}>
                     {t.uploadBtn}
                   </button>
-                  {imageSrc && (
-                    <button
-                      className="mt-4 bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-full font-medium shadow-md shadow-amber-500/20 transition-all text-sm sm:text-base w-full sm:w-auto"
-                      type="button"
-                      onClick={handleAnalyzeClick}
-                    >
-                      {t.analyzeBtn}
-                    </button>
-                  )}
                 </div>
                 <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
               </div>
