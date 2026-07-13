@@ -135,7 +135,7 @@ export default function App() {
   const [aiResult, setAiResult] = useState<AiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const isCallingAPI = useRef(false);
+  const isAnalyzing = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = translations[lang];
@@ -174,63 +174,69 @@ export default function App() {
 
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
-    if (isLoading || isCallingAPI.current) return;
-
-    setError(null);
 
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || isAnalyzing.current) return;
 
-    isCallingAPI.current = true;
+    isAnalyzing.current = true;
+    setError(null);
+    setIsLoading(true);
+    setScreen('analyzing');
 
     const reader = new FileReader();
     reader.onload = async (event: ProgressEvent<FileReader>) => {
       const base64String = (event.target?.result as string) || '';
-      setImageSrc(base64String);
-      setIsLoading(true);
-      setError(null);
-      setScreen('analyzing');
 
-      const compressedBase64 = await compressImage(base64String);
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
-      if (!apiKey) {
-        setError('VITE_GEMINI_API_KEY ไม่ได้ตั้งค่า');
+      if (!base64String) {
+        setError('ไม่สามารถอ่านไฟล์ภาพได้ กรุณาลองใหม่');
         setScreen('home');
         setIsLoading(false);
-        isCallingAPI.current = false;
+        isAnalyzing.current = false;
         return;
       }
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-      const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm". 
-      Analyze this honey image and estimate the top 3 possible honey types.
-      CRITICAL INSTRUCTION: ${t.aiLangInstruction}. The JSON values MUST be written in the selected language.
-      
-      Reply ONLY in valid JSON format with this exact structure (keep keys in English):
-      {
-        "predictions": [
-          {"type": "Name of honey type 1", "percentage": number},
-          {"type": "Name of honey type 2", "percentage": number},
-          {"type": "Name of honey type 3", "percentage": number}
-        ],
-        "conclusion_reason": "Short explanation of why it is predicted as type 1",
-        "characteristics": {
-          "color": "Color description",
-          "clarity": "Clarity description",
-          "viscosity": "Viscosity description"
-        },
-        "naturalnessScore": number 1-100,
-        "benefits": ["Benefit 1", "Benefit 2", "Benefit 3", "Benefit 4"],
-        "usages": ["Usage 1", "Usage 2", "Usage 3", "Usage 4"]
-      }`;
-
-      const mimeMatch = compressedBase64.match(/data:(.*?);base64/);
-      const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-      const base64Data = compressedBase64.split(',')[1] ?? '';
+      setImageSrc(base64String);
 
       try {
+        const compressedBase64 = await compressImage(base64String);
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
+        if (!apiKey) {
+          setError('VITE_GEMINI_API_KEY ไม่ได้ตั้งค่า');
+          setScreen('home');
+          setIsLoading(false);
+          isAnalyzing.current = false;
+          return;
+        }
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+        const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm". 
+        Analyze this honey image and estimate the top 3 possible honey types.
+        CRITICAL INSTRUCTION: ${t.aiLangInstruction}. The JSON values MUST be written in the selected language.
+        
+        Reply ONLY in valid JSON format with this exact structure (keep keys in English):
+        {
+          "predictions": [
+            {"type": "Name of honey type 1", "percentage": number},
+            {"type": "Name of honey type 2", "percentage": number},
+            {"type": "Name of honey type 3", "percentage": number}
+          ],
+          "conclusion_reason": "Short explanation of why it is predicted as type 1",
+          "characteristics": {
+            "color": "Color description",
+            "clarity": "Clarity description",
+            "viscosity": "Viscosity description"
+          },
+          "naturalnessScore": number 1-100,
+          "benefits": ["Benefit 1", "Benefit 2", "Benefit 3", "Benefit 4"],
+          "usages": ["Usage 1", "Usage 2", "Usage 3", "Usage 4"]
+        }`;
+
+        const mimeMatch = compressedBase64.match(/data:(.*?);base64/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        const base64Data = compressedBase64.split(',')[1] ?? '';
+
         const response = await model.generateContent({
           contents: [{
             role: 'user',
@@ -263,16 +269,20 @@ export default function App() {
       } catch (err) {
         console.error('AI Analysis Failed:', err);
         setError('การวิเคราะห์ AI ล้มเหลว กรุณาลองใหม่');
+        setScreen('home');
       } finally {
         setIsLoading(false);
-        isCallingAPI.current = false;
+        isAnalyzing.current = false;
       }
     };
+
     reader.onerror = () => {
       setError('ไม่สามารถอ่านไฟล์ภาพได้ กรุณาลองใหม่');
+      setScreen('home');
       setIsLoading(false);
-      isCallingAPI.current = false;
+      isAnalyzing.current = false;
     };
+
     reader.readAsDataURL(file);
   };
 
@@ -342,11 +352,25 @@ export default function App() {
                   <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2 text-center">{t.uploadTitle}</h3>
                   <p className="text-slate-400 text-xs sm:text-sm text-center">{t.uploadDesc}</p>
                   
-                  <button className="mt-6 sm:mt-8 bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-full font-medium shadow-md shadow-amber-500/20 transition-all text-sm sm:text-base w-full sm:w-auto" type="button" onClick={() => fileInputRef.current?.click()}>
+                  <button
+                    className="mt-6 sm:mt-8 bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-full font-medium shadow-md shadow-amber-500/20 transition-all text-sm sm:text-base w-full sm:w-auto disabled:cursor-not-allowed disabled:bg-amber-300"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoading}
+                  >
                     {t.uploadBtn}
                   </button>
                 </div>
-                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={(event) => {
+                    handleImageUpload(event);
+                    event.target.value = '';
+                  }}
+                />
                 {imageSrc && (
                   <div className="mt-6 rounded-3xl overflow-hidden border border-slate-200 bg-slate-50">
                     <img src={imageSrc} alt="Selected honey" className="w-full h-auto object-cover" />
