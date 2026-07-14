@@ -135,10 +135,21 @@ export default function App() {
   const [aiResult, setAiResult] = useState<AiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [errorType, setErrorType] = useState<'daily' | 'rate' | 'general' | null>(null);
+  const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
   const isAnalyzing = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = translations[lang];
+
+  // ฟังก์ชันปิด Error Modal และล้างค่าต่าง ๆ
+  const handleCloseErrorModal = () => {
+    setIsErrorModalOpen(false);
+    setErrorType(null);
+    setError(null);
+    setImageSrc('');
+    setScreen('home');
+  };
 
   // ฟังก์ชันย่อขนาดภาพ ป้องกันเว็บค้าง
   const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
@@ -268,8 +279,21 @@ export default function App() {
         setScreen('result');
       } catch (err) {
         console.error('AI Analysis Failed:', err);
-        setError('การวิเคราะห์ AI ล้มเหลว กรุณาลองใหม่');
+        
+        // ตรวจสอบและแยกประเภท Error
+        const errorMessage = (err as Error)?.message || '';
+        
+        if (errorMessage.includes('limit: 0') || errorMessage.includes('Quota exceeded')) {
+          setErrorType('daily');
+        } else if (errorMessage.includes('Please retry in') || errorMessage.includes('429')) {
+          setErrorType('rate');
+        } else {
+          setErrorType('general');
+        }
+        
         setScreen('home');
+        setIsErrorModalOpen(true);
+        isAnalyzing.current = false;
       } finally {
         setIsLoading(false);
         isAnalyzing.current = false;
@@ -374,9 +398,18 @@ export default function App() {
                 {imageSrc && (
                   <div className="mt-6 rounded-3xl overflow-hidden border border-slate-200 bg-slate-50">
                     <img src={imageSrc} alt="Selected honey" className="w-full h-auto object-cover" />
-                    {error && (
-                      <div className="p-4 text-sm text-red-700 bg-red-50 border-t border-red-200">
-                        {error}
+                    {errorType && (
+                      <div className="p-4 bg-gradient-to-r from-red-50 to-orange-50 border-t border-red-200">
+                        <div className="flex items-start gap-3 px-2 py-3 bg-white rounded-2xl border border-red-100 shadow-sm">
+                          <span className="text-lg leading-none mt-0.5">
+                            {errorType === 'daily' ? '⚠️' : errorType === 'rate' ? '⏳' : '❌'}
+                          </span>
+                          <div className="text-sm text-red-700 font-medium leading-relaxed">
+                            {errorType === 'daily' && '⚠️ ขออภัยค่ะ สิทธิ์ใช้งานฟรีวันนี้เต็มแล้ว'}
+                            {errorType === 'rate' && '⏳ ระบบหนาแน่นชั่วคราว กรุณารอสักครู่แล้วลองใหม่ค่ะ'}
+                            {errorType === 'general' && '❌ เกิดข้อผิดพลาด ไม่สามารถประมวลผลรูปภาพได้'}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -575,6 +608,65 @@ export default function App() {
         )}
 
       </main>
+
+      {/* CUSTOM ERROR MODAL */}
+      {isErrorModalOpen && errorType && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          {/* Backdrop with blur */}
+          <div 
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300"
+            onClick={handleCloseErrorModal}
+          />
+          
+          {/* Modal content */}
+          <div className="relative bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 fade-in duration-300">
+            {/* Header background */}
+            <div className={`
+              h-2 w-full
+              ${errorType === 'daily' ? 'bg-gradient-to-r from-yellow-400 to-orange-400' : 
+                errorType === 'rate' ? 'bg-gradient-to-r from-blue-400 to-cyan-400' : 
+                'bg-gradient-to-r from-red-400 to-rose-400'}
+            `} />
+            
+            {/* Content */}
+            <div className="p-8 text-center">
+              <div className={`
+                w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center text-3xl
+                ${errorType === 'daily' ? 'bg-yellow-100' : 
+                  errorType === 'rate' ? 'bg-blue-100' : 
+                  'bg-red-100'}
+              `}>
+                {errorType === 'daily' ? '⚠️' : errorType === 'rate' ? '⏳' : '❌'}
+              </div>
+
+              <h2 className="text-2xl font-bold text-slate-900 mb-3">
+                {errorType === 'daily' && 'ขออภัยค่ะ'}
+                {errorType === 'rate' && 'ระบบหนาแน่นชั่วคราว'}
+                {errorType === 'general' && 'เกิดข้อผิดพลาด'}
+              </h2>
+
+              <p className="text-slate-600 leading-relaxed text-base mb-8 whitespace-pre-line">
+                {errorType === 'daily' && 'สิทธิ์การใช้งานฟรีในวันนี้เต็มแล้ว\nกรุณากลับมาลองใหม่อีกครั้งในวันพรุ่งนี้นะคะ'}
+                {errorType === 'rate' && 'มีการส่งข้อมูลถี่เกินไปในขณะนี้\nกรุณารอสักครู่แล้วลองใหม่อีกครั้งค่ะ'}
+                {errorType === 'general' && 'ไม่สามารถประมวลผลรูปภาพได้ในขณะนี้\nกรุณาตรวจสอบและลองใหม่อีกครั้งค่ะ'}
+              </p>
+
+              {/* Button */}
+              <button
+                onClick={handleCloseErrorModal}
+                className={`
+                  w-full py-3.5 px-6 rounded-full font-semibold text-white transition-all
+                  ${errorType === 'daily' ? 'bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-500/30' : 
+                    errorType === 'rate' ? 'bg-blue-500 hover:bg-blue-600 shadow-lg shadow-blue-500/30' : 
+                    'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30'}
+                `}
+              >
+                รับทราบ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
