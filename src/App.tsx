@@ -1,6 +1,6 @@
 // force rebuild
 
-import { useState, useRef, type ChangeEvent } from 'react';
+import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -12,7 +12,59 @@ import {
 } from 'lucide-react';
 
 // === ข้อมูลคำแปล (Dictionary) ===
-const translations = {
+type TranslationStrings = {
+  appTitle: string;
+  appDesc: string;
+  uploadTitle: string;
+  uploadDesc: string;
+  uploadAction: string;
+  downloadPNG: string;
+  downloadPDF: string;
+  downloadReport: string;
+  downloadModalTitle: string;
+  uploadBtn: string;
+  noteTitle: string;
+  note1Title: string;
+  note1Desc: string;
+  note2Title: string;
+  note2Desc: string;
+  loadingTitle: string;
+  loadingDesc: string;
+  reportTitle: string;
+  reportBy: string;
+  predTitle: string;
+  concTitle: string;
+  concFrom: string;
+  concProb: string;
+  concReason: string;
+  physTitle: string;
+  physColor: string;
+  physClarity: string;
+  physVisc: string;
+  natTitle: string;
+  natDesc: string;
+  benTitle: string;
+  useTitle: string;
+  disclaimerLabel: string;
+  disclaimerText: string;
+  printBtn: string;
+  newBtn: string;
+  errNoKey: string;
+  aiLangInstruction: string;
+  aiSystemInstruction: string;
+  brandShort: string;
+  errReadFile: string;
+  errorDailyTitle: string;
+  errorRateTitle: string;
+  errorGeneralTitle: string;
+  errorDailyDesc: string;
+  errorRateDesc: string;
+  errorGeneralDesc: string;
+  modalAcknowledge: string;
+  benefits: string[];
+  usages: string[];
+};
+const translations: Record<'th' | 'en' | 'zh', TranslationStrings> = {
   th: {
     appTitle: "ระบบวิเคราะห์คุณภาพน้ำผึ้ง",
     appDesc: "อัพโหลดภาพถ่ายน้ำผึ้งของคุณ เพื่อประเมินชนิด คุณลักษณะ และความเป็นธรรมชาติเบื้องต้นด้วยเทคโนโลยี AI",
@@ -56,14 +108,15 @@ const translations = {
     aiSystemInstruction: "ให้วิเคราะห์และตอบกลับผลลัพธ์ทั้งหมด (รวมถึงชื่อประเภทน้ำผึ้ง, เปอร์เซ็นต์ความมั่นใจ, และเหตุผลการประเมิน) เป็นภาษาไทยเท่านั้น ห้ามมีภาษาอื่นปน",
     brandShort: "Honey Dee Big Bee Farm",
     errReadFile: 'ไม่สามารถอ่านไฟล์ภาพได้ กรุณาลองใหม่',
-    defaultUsages: ['ชงกับชา', 'ราดแพนเค้ก', 'หมักเนื้อ', 'พอกหน้า'],
     errorDailyTitle: 'ขออภัยค่ะ',
     errorRateTitle: 'ระบบหนาแน่นชั่วคราว',
     errorGeneralTitle: 'เกิดข้อผิดพลาด',
     errorDailyDesc: 'สิทธิ์การใช้งานฟรีในวันนี้เต็มแล้ว\nกรุณากลับมาลองใหม่อีกครั้งในวันพรุ่งนี้นะคะ',
     errorRateDesc: 'มีการส่งข้อมูลถี่เกินไปในขณะนี้\nกรุณารอสักครู่แล้วลองใหม่อีกครั้งค่ะ',
     errorGeneralDesc: 'ไม่สามารถประมวลผลรูปภาพได้ในขณะนี้\nกรุณาตรวจสอบและลองใหม่อีกครั้งค่ะ',
-    modalAcknowledge: 'รับทราบ'
+    modalAcknowledge: 'รับทราบ',
+    benefits: ['ดีต่อระบบภูมิคุ้มกัน', 'ช่วยลดการอักเสบ', 'บำรุงผิวพรรณ', 'ให้พลังงานอย่างยาวนาน'],
+    usages: ['ชงกับชา', 'ราดแพนเค้ก', 'หมักเนื้อ', 'พอกหน้า']
   },
   en: {
     appTitle: "Honey Quality Analysis",
@@ -108,14 +161,15 @@ const translations = {
     aiSystemInstruction: "Analyze and respond with all results (including honey type names, confidence percentages, and reasons) ONLY in English. Do not include any other language.",
     brandShort: "Honey Dee Big Bee Farm",
     errReadFile: 'Unable to read the image file. Please try again.',
-    defaultUsages: ['Stir into tea', 'Drizzle on pancakes', 'Marinate meat', 'Apply as a face mask'],
     errorDailyTitle: 'Sorry',
     errorRateTitle: 'Temporary congestion',
     errorGeneralTitle: 'An error occurred',
     errorDailyDesc: 'Free usage quota for today has been exhausted.\nPlease try again tomorrow.',
     errorRateDesc: 'The system is currently busy.\nPlease wait a moment and try again.',
     errorGeneralDesc: 'Unable to process the image right now.\nPlease check and try again.',
-    modalAcknowledge: 'OK'
+    modalAcknowledge: 'OK',
+    benefits: ['Supports immune health', 'Reduces inflammation', 'Nourishes skin', 'Provides long-lasting energy'],
+    usages: ['Stir into tea', 'Drizzle on pancakes', 'Marinate meat', 'Apply as a face mask']
   },
   zh: {
     appTitle: "蜂蜜质量分析系统",
@@ -160,14 +214,15 @@ const translations = {
     aiSystemInstruction: "请分析并将所有结果（包括蜂蜜类型名称、置信度百分比和评估理由）仅以简体中文完整返回，禁止混用其他语言。",
     brandShort: "Honey Dee Big Bee Farm",
     errReadFile: '无法读取图像文件，请重试。',
-    defaultUsages: ['加入茶中', '淋在煎饼上', '腌制肉类', '做面膜使用'],
     errorDailyTitle: '抱歉',
     errorRateTitle: '系统繁忙',
     errorGeneralTitle: '发生错误',
     errorDailyDesc: '今天的免费使用额度已用完。\n请明天再试。',
     errorRateDesc: '系统当前负载较高。\n请稍候再试。',
     errorGeneralDesc: '当前无法处理图像。\n请检查后重试。',
-    modalAcknowledge: '知道了'
+    modalAcknowledge: '知道了',
+    benefits: ['支持免疫健康', '减少炎症', '滋养皮肤', '提供持久能量'],
+    usages: ['加入茶中', '淋在煎饼上', '腌制肉类', '做面膜使用']
   }
 };
 
@@ -196,13 +251,28 @@ export default function App() {
 
   const t = translations[lang];
   const reportRef = useRef<HTMLDivElement | null>(null);
+  const imageUrlRef = useRef<string | null>(null);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+
+  const revokePreviewUrl = () => {
+    if (imageUrlRef.current) {
+      URL.revokeObjectURL(imageUrlRef.current);
+      imageUrlRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePreviewUrl();
+    };
+  }, []);
 
   // ฟังก์ชันปิด Error Modal และล้างค่าต่าง ๆ
   const handleCloseErrorModal = () => {
     setIsErrorModalOpen(false);
     setErrorType(null);
     setError(null);
+    revokePreviewUrl();
     setImageSrc('');
     setScreen('home');
   };
@@ -243,6 +313,16 @@ export default function App() {
     e.preventDefault();
     const file = e.target.files?.[0];
     if (!file || isAnalyzing.current) return;
+
+    if (imageUrlRef.current) {
+      URL.revokeObjectURL(imageUrlRef.current);
+      imageUrlRef.current = null;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    imageUrlRef.current = previewUrl;
+    setImageSrc(previewUrl);
+
     const reader = new FileReader();
     isAnalyzing.current = true;
     setError(null);
@@ -252,14 +332,12 @@ export default function App() {
       const base64String = (event.target?.result as string) || '';
 
       if (!base64String) {
-        setError(t.errReadFile);
+          revokePreviewUrl();
         setScreen('home');
         setIsLoading(false);
         isAnalyzing.current = false;
         return;
       }
-
-      setImageSrc(base64String);
 
       try {
         const compressedBase64 = await compressImage(base64String);
@@ -275,7 +353,9 @@ export default function App() {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
-        const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm".\nAnalyze this honey image and estimate the top 3 possible honey types.\n\nReply ONLY in valid JSON format with this exact structure (keep keys in English):\n{\n  "predictions": [\n    {"type": "Name of honey type 1", "percentage": number},\n    {"type": "Name of honey type 2", "percentage": number},\n    {"type": "Name of honey type 3", "percentage": number}\n  ],\n  "conclusion_reason": "Short explanation of why it is predicted as type 1",\n  "characteristics": {\n    "color": "Color description",\n    "clarity": "Clarity description",\n    "viscosity": "Viscosity description"\n  },\n  "naturalnessScore": number 1-100,\n  "benefits": ["Benefit 1", "Benefit 2", "Benefit 3", "Benefit 4"],\n  "usages": ["Usage 1", "Usage 2", "Usage 3", "Usage 4"]\n}`;
+        const languageNameMap = { th: 'Thai', en: 'English', zh: 'Chinese' } as const;
+        const currentLanguageName = languageNameMap[lang];
+        const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm".\nAnalyze this honey image and estimate the top 3 possible honey types.\n\nYou MUST return the entire analysis result, including the predicted honey type name, percentage, assessment conclusion, reasoning, and physical characteristics, in the language matching: ${currentLanguageName} absolutely. Do not mix Thai language if the requested language is English or Chinese.\n\nReply ONLY in valid JSON format with this exact structure (keep keys in English):\n{\n  "predictions": [\n    {"type": "Name of honey type 1", "percentage": number},\n    {"type": "Name of honey type 2", "percentage": number},\n    {"type": "Name of honey type 3", "percentage": number}\n  ],\n  "conclusion_reason": "Short explanation of why it is predicted as type 1",\n  "characteristics": {\n    "color": "Color description",\n    "clarity": "Clarity description",\n    "viscosity": "Viscosity description"\n  },\n  "naturalnessScore": number 1-100,\n  "benefits": ["Benefit 1", "Benefit 2", "Benefit 3", "Benefit 4"],\n  "usages": ["Usage 1", "Usage 2", "Usage 3", "Usage 4"]\n}`;
 
         const mimeMatch = compressedBase64.match(/data:(.*?);base64/) || [];
         const mimeType = (mimeMatch as string[])[1] ?? 'image/jpeg';
@@ -301,8 +381,8 @@ export default function App() {
           conclusion_reason: parsedData.conclusion_reason || '-',
           characteristics: parsedData.characteristics || { color: '-', clarity: '-', viscosity: '-' },
           naturalnessScore: parsedData.naturalnessScore || 0,
-          benefits: parsedData.benefits && parsedData.benefits.length > 0 ? parsedData.benefits : ['-'],
-          usages: parsedData.usages && parsedData.usages.length > 0 ? parsedData.usages : t.defaultUsages
+          benefits: parsedData.benefits && parsedData.benefits.length > 0 ? parsedData.benefits : t.benefits,
+          usages: parsedData.usages && parsedData.usages.length > 0 ? parsedData.usages : t.usages
         };
 
         setAiResult(safeData as AiResult);
@@ -332,6 +412,7 @@ export default function App() {
     };
 
     reader.onerror = () => {
+      revokePreviewUrl();
       setError(t.errReadFile);
       setScreen('home');
       setIsLoading(false);
@@ -342,9 +423,10 @@ export default function App() {
   };
 
   const downloadPNG = async () => {
-    if (!reportRef.current) return;
+    const reportNode = document.querySelector<HTMLDivElement>('#honey-report-card');
+    if (!reportNode) return;
     try {
-      const canvas = await html2canvas(reportRef.current, { useCORS: true, scale: 2 });
+      const canvas = await html2canvas(reportNode, { useCORS: true, scale: 2, backgroundColor: '#ffffff' });
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = dataUrl;
@@ -352,6 +434,7 @@ export default function App() {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      setIsDownloadModalOpen(false);
     } catch (err) {
       console.error('PNG download failed', err);
       setError((err as Error)?.message || 'Download failed');
@@ -359,14 +442,14 @@ export default function App() {
   };
 
   const downloadPDF = async () => {
-    if (!reportRef.current) return;
+    const reportNode = document.querySelector<HTMLDivElement>('#honey-report-card');
+    if (!reportNode) return;
     try {
-      const canvas = await html2canvas(reportRef.current, { useCORS: true, scale: 2 });
+      const canvas = await html2canvas(reportNode, { useCORS: true, scale: 2, backgroundColor: '#ffffff' });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      // fit image into page while keeping aspect
       const img = new Image();
       img.src = imgData;
       await new Promise((res) => (img.onload = res));
@@ -379,6 +462,7 @@ export default function App() {
       const y = (pageHeight - height) / 2;
       pdf.addImage(imgData, 'PNG', x, y, width, height);
       pdf.save(`${t.brandShort.replace(/\s+/g, '_')}_${lang}_report.pdf`);
+      setIsDownloadModalOpen(false);
     } catch (err) {
       console.error('PDF download failed', err);
       setError((err as Error)?.message || 'Download failed');
@@ -465,6 +549,7 @@ export default function App() {
                 <input
                   type="file"
                   accept="image/*"
+                  capture="environment"
                   className="hidden"
                   ref={fileInputRef}
                   onChange={(event) => {
@@ -524,8 +609,8 @@ export default function App() {
             <div className="bg-white rounded-2xl p-6 w-11/12 max-w-md shadow-xl">
               <h3 className="text-lg font-bold mb-4">{t.downloadModalTitle}</h3>
               <div className="flex gap-3">
-                <button onClick={() => { downloadPNG(); setIsDownloadModalOpen(false); }} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-3 rounded-lg">{t.downloadPNG}</button>
-                <button onClick={() => { downloadPDF(); setIsDownloadModalOpen(false); }} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white px-4 py-3 rounded-lg">{t.downloadPDF}</button>
+                <button onClick={() => downloadPNG()} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-3 rounded-lg">{t.downloadPNG}</button>
+                <button onClick={() => downloadPDF()} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white px-4 py-3 rounded-lg">{t.downloadPDF}</button>
               </div>
               <div className="mt-4 text-right">
                 <button onClick={() => setIsDownloadModalOpen(false)} className="text-sm text-slate-600">Cancel</button>
@@ -565,7 +650,7 @@ export default function App() {
                </div>
             </div>
 
-            <div ref={reportRef} className="p-6 md:p-8 space-y-8 sm:space-y-10">
+            <div id="honey-report-card" ref={reportRef} style={{ backgroundColor: '#ffffff' }} className="p-6 md:p-8 space-y-8 sm:space-y-10">
               
               <section>
                 <h3 className="text-lg font-bold text-slate-900 mb-5 flex items-center gap-2">
@@ -649,7 +734,7 @@ export default function App() {
                        <Heart className="w-5 h-5 text-rose-500" /> {t.benTitle}
                      </h3>
                      <div className="flex flex-col gap-3">
-                       {aiResult.benefits?.map((item, idx) => (
+                       {t.benefits.map((item: string, idx: number) => (
                          <div key={idx} className="flex items-start gap-3 p-3 bg-green-50/70 rounded-xl border border-green-100/50">
                            <Check className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
                            <span className="text-sm sm:text-base text-slate-700 leading-relaxed text-balance break-words w-full">{item}</span>
@@ -663,7 +748,7 @@ export default function App() {
                        <Utensils className="w-5 h-5 text-orange-500" /> {t.useTitle}
                      </h3>
                      <div className="flex flex-col gap-3">
-                       {aiResult.usages?.map((item, idx) => (
+                       {t.usages.map((item: string, idx: number) => (
                          <div key={idx} className="flex items-start gap-3 p-3 bg-amber-50/70 rounded-xl border border-amber-100/50">
                            <Coffee className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                            <span className="text-sm sm:text-base text-slate-700 leading-relaxed text-balance break-words w-full">{item}</span>
