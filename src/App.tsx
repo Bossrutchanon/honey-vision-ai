@@ -6,7 +6,7 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { 
   Upload, AlertCircle, CheckCircle2, Droplet, 
-  Activity, Utensils, Coffee, Heart, Printer, 
+  Activity, Utensils, Coffee, Heart, 
   RotateCcw, Loader2, ShieldCheck, FileText, Camera,
   BadgeCheck, Sparkles, Check, Globe
 } from 'lucide-react';
@@ -21,6 +21,8 @@ const translations = {
     uploadAction: 'ถ่ายรูปหรืออัปโหลดภาพน้ำผึ้ง',
     downloadPNG: 'ดาวน์โหลดเป็นรูปภาพ (PNG)',
     downloadPDF: 'ดาวน์โหลดเป็นเอกสาร (PDF)',
+    downloadReport: 'ดาวน์โหลดใบรายงานผล',
+    downloadModalTitle: 'เลือกรูปแบบไฟล์ดาวน์โหลด',
     uploadBtn: "อัพโหลดรูปภาพ",
     noteTitle: "ข้อควรทราบก่อนใช้งาน",
     note1Title: "ประเมินเบื้องต้นเท่านั้น",
@@ -71,6 +73,8 @@ const translations = {
     uploadAction: 'Take photo or upload your honey image',
     downloadPNG: 'Download as Image (PNG)',
     downloadPDF: 'Download as Document (PDF)',
+    downloadReport: 'Download Report',
+    downloadModalTitle: 'Choose file format to download',
     uploadBtn: "Upload Image",
     noteTitle: "Important Notes",
     note1Title: "Preliminary Assessment Only",
@@ -121,6 +125,8 @@ const translations = {
     uploadAction: '拍照或上传您的蜂蜜图片',
     downloadPNG: '下载为图片 (PNG)',
     downloadPDF: '下载为文档 (PDF)',
+    downloadReport: '下载分析报告',
+    downloadModalTitle: '选择要下载的文件格式',
     uploadBtn: "上传图片",
     noteTitle: "使用前须知",
     note1Title: "仅供初步评估",
@@ -190,6 +196,7 @@ export default function App() {
 
   const t = translations[lang];
   const reportRef = useRef<HTMLDivElement | null>(null);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   // ฟังก์ชันปิด Error Modal และล้างค่าต่าง ๆ
   const handleCloseErrorModal = () => {
@@ -240,6 +247,7 @@ export default function App() {
     isAnalyzing.current = true;
     setError(null);
     setIsLoading(true);
+    setScreen('analyzing');
     reader.onload = async (event: ProgressEvent<FileReader>) => {
       const base64String = (event.target?.result as string) || '';
 
@@ -298,6 +306,7 @@ export default function App() {
         };
 
         setAiResult(safeData as AiResult);
+        setIsLoading(false);
         setScreen('result');
       } catch (err) {
         console.error('AI Analysis Failed:', err);
@@ -315,9 +324,9 @@ export default function App() {
         
         setScreen('home');
         setIsErrorModalOpen(true);
+        setIsLoading(false);
         isAnalyzing.current = false;
       } finally {
-        setIsLoading(false);
         isAnalyzing.current = false;
       }
     };
@@ -437,9 +446,9 @@ export default function App() {
                   className="bg-white border-2 border-dashed border-amber-300 hover:border-amber-500 hover:bg-amber-50/80 transition-all rounded-3xl p-8 sm:p-14 flex flex-col items-center justify-center cursor-pointer min-h-[250px] shadow-sm group"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                   <div className="flex items-center gap-3 bg-amber-100 p-4 sm:p-5 rounded-full mb-4 sm:mb-6 group-hover:scale-110 transition-transform duration-300">
-                    <Camera className="w-6 h-6 sm:w-8 sm:h-8 text-amber-600" />
-                    <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-amber-600" />
+                  <div className="flex items-center gap-3 p-4 sm:p-5 rounded-full mb-4 sm:mb-6 group-hover:scale-110 transition-transform duration-300" style={{ backgroundColor: '#fff7ed' }}>
+                    <Camera className="w-6 h-6 sm:w-8 sm:h-8" style={{ color: '#f59e0b' }} />
+                    <Upload className="w-6 h-6 sm:w-8 sm:h-8" style={{ color: '#f59e0b' }} />
                   </div>
                   <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2 text-center">{t.uploadAction}</h3>
                   <p className="text-slate-400 text-xs sm:text-sm text-center">{t.uploadDesc}</p>
@@ -509,6 +518,22 @@ export default function App() {
           </div>
         )}
 
+        {/* Download selection modal */}
+        {isDownloadModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl p-6 w-11/12 max-w-md shadow-xl">
+              <h3 className="text-lg font-bold mb-4">{t.downloadModalTitle}</h3>
+              <div className="flex gap-3">
+                <button onClick={() => { downloadPNG(); setIsDownloadModalOpen(false); }} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-3 rounded-lg">{t.downloadPNG}</button>
+                <button onClick={() => { downloadPDF(); setIsDownloadModalOpen(false); }} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white px-4 py-3 rounded-lg">{t.downloadPDF}</button>
+              </div>
+              <div className="mt-4 text-right">
+                <button onClick={() => setIsDownloadModalOpen(false)} className="text-sm text-slate-600">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* --- SCREEN 2: LOADING --- */}
         {screen === 'analyzing' && (
           <div className="flex flex-col items-center justify-center py-20 sm:py-32">
@@ -554,9 +579,9 @@ export default function App() {
                         <span className="sm:hidden text-sm font-bold text-slate-900">{item.percentage}%</span>
                       </div>
                       <div className="flex-1 h-3 sm:h-3.5 bg-slate-100 rounded-full overflow-hidden w-full">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-1000 ${idx === 0 ? 'bg-amber-500' : idx === 1 ? 'bg-amber-400' : 'bg-slate-300'}`} 
-                          style={{width: `${item.percentage}%`}}
+                        <div
+                          className="h-full rounded-full transition-all duration-1000"
+                          style={{ width: `${item.percentage}%`, backgroundColor: idx === 0 ? '#f59e0b' : idx === 1 ? '#fbbf24' : '#cbd5e1' }}
                         ></div>
                       </div>
                       <div className="hidden sm:block w-12 text-right text-sm sm:text-base font-bold text-slate-900">
@@ -567,18 +592,18 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 p-6 rounded-2xl relative overflow-hidden shadow-sm">
-                <div className="absolute -right-6 -top-6 opacity-5 mix-blend-multiply pointer-events-none">
-                  <BadgeCheck className="w-40 h-40 text-amber-900" />
+              <section className="p-6 rounded-2xl relative overflow-hidden shadow-sm" style={{ background: 'linear-gradient(135deg,#fffbeb 0%,#fff7ed 100%)', border: '1px solid #f1f5f9' }}>
+                <div style={{ position: 'absolute', right: -24, top: -24, opacity: 0.05, pointerEvents: 'none' }}>
+                  <BadgeCheck className="w-40 h-40" style={{ color: '#92400e' }} />
                 </div>
-                <h3 className="font-bold text-amber-900 mb-3 flex items-center gap-2 relative z-10 text-lg">
-                  <Sparkles className="w-5 h-5 text-amber-600" /> {t.concTitle}
+                <h3 className="mb-3 flex items-center gap-2 relative z-10 text-lg" style={{ fontWeight: 700, color: '#92400e' }}>
+                  <Sparkles className="w-5 h-5" style={{ color: '#f59e0b' }} /> {t.concTitle}
                 </h3>
                 <div className="relative z-10">
-                  <p className="text-sm sm:text-base text-amber-900/95 leading-loose text-balance">
-                    {t.concFrom} <b className="bg-amber-200/50 px-2 py-0.5 rounded text-amber-950">{aiResult.predictions?.[0]?.type}</b> {t.concProb} <b className="text-amber-700 text-lg">{aiResult.predictions?.[0]?.percentage}%</b>
+                  <p style={{ fontSize: '0.9375rem', lineHeight: '1.6', color: '#92400e' }}>
+                    {t.concFrom} <b style={{ backgroundColor: 'rgba(254,243,199,0.6)', padding: '0 8px', borderRadius: 6, color: '#78350f' }}>{aiResult.predictions?.[0]?.type}</b> {t.concProb} <b style={{ color: '#b45309', fontSize: '1.125rem' }}>{aiResult.predictions?.[0]?.percentage}%</b>
                   </p>
-                  <p className="text-amber-800/80 mt-3 text-sm leading-relaxed border-t border-amber-200/60 pt-3">
+                  <p style={{ color: '#92400e', marginTop: 12, fontSize: '0.875rem', borderTop: '1px solid rgba(226,232,240,0.6)', paddingTop: 12 }}>
                     <b>{t.concReason}</b> {aiResult.conclusion_reason}
                   </p>
                 </div>
@@ -605,13 +630,13 @@ export default function App() {
                     </div>
                  </div>
 
-                 <div className="bg-gradient-to-br from-orange-400 to-amber-500 rounded-2xl p-6 text-white flex flex-col justify-center items-center shadow-inner">
-                    <h3 className="text-sm sm:text-base font-medium text-amber-50 mb-2">{t.natTitle}</h3>
+                 <div className="rounded-2xl p-6 text-white flex flex-col justify-center items-center shadow-inner" style={{ background: 'linear-gradient(135deg,#fb923c 0%,#f59e0b 100%)' }}>
+                    <h3 className="text-sm sm:text-base font-medium mb-2" style={{ color: '#fff7ed' }}>{t.natTitle}</h3>
                     <div className="flex items-baseline gap-1 my-2">
                       <span className="text-6xl sm:text-7xl font-black drop-shadow-sm">{aiResult.naturalnessScore}</span>
                       <span className="text-2xl sm:text-3xl font-bold opacity-80">%</span>
                     </div>
-                    <p className="text-xs sm:text-sm text-amber-50 mt-2 text-center bg-black/10 px-3 py-1.5 rounded-full font-medium">
+                    <p className="text-xs sm:text-sm mt-2 text-center" style={{ color: 'rgba(255,255,255,0.9)', background: 'rgba(0,0,0,0.08)', padding: '6px 12px', borderRadius: 999 }}>
                       {t.natDesc}
                     </p>
                  </div>
@@ -659,31 +684,21 @@ export default function App() {
 
             <div className="p-6 md:p-8 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-center gap-4 print:hidden">
                <div className="flex gap-3 w-full sm:w-auto">
-                 <button 
-                   onClick={downloadPNG}
-                   className="flex-1 sm:flex-none w-full sm:w-auto flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-6 py-3.5 rounded-full font-medium transition-colors shadow-lg shadow-amber-600/20 text-sm sm:text-base"
+                 <button
+                   onClick={() => { setScreen('home'); setAiResult(null); setImageSrc(''); }}
+                   className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-8 py-3.5 rounded-full font-medium transition-colors shadow-sm text-sm sm:text-base"
                  >
-                   {t.downloadPNG}
-                 </button>
-                 <button 
-                   onClick={downloadPDF}
-                   className="flex-1 sm:flex-none w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-6 py-3.5 rounded-full font-medium transition-colors shadow-lg shadow-slate-900/20 text-sm sm:text-base"
-                 >
-                   {t.downloadPDF}
+                   <RotateCcw className="w-5 h-5" /> {t.newBtn}
                  </button>
                </div>
-               <button 
-                 onClick={() => window.print()}
-                 className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-8 py-3.5 rounded-full font-medium transition-colors shadow-sm text-sm sm:text-base"
-               >
-                 <Printer className="w-5 h-5" /> {t.printBtn}
-               </button>
-               <button 
-                 onClick={() => { setScreen('home'); setAiResult(null); }}
-                 className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-8 py-3.5 rounded-full font-medium transition-colors shadow-sm text-sm sm:text-base"
-               >
-                 <RotateCcw className="w-5 h-5" /> {t.newBtn}
-               </button>
+               <div className="flex gap-3 w-full sm:w-auto">
+                 <button
+                   onClick={() => setIsDownloadModalOpen(true)}
+                   className="w-full sm:w-auto flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-8 py-3.5 rounded-full font-medium transition-colors shadow-lg shadow-amber-600/20 text-sm sm:text-base"
+                 >
+                   {t.downloadReport}
+                 </button>
+               </div>
             </div>
 
           </div>
