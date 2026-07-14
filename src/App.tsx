@@ -2,6 +2,8 @@
 
 import { useState, useRef, type ChangeEvent } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { 
   Upload, AlertCircle, CheckCircle2, Droplet, 
   Activity, Utensils, Coffee, Heart, Printer, 
@@ -16,6 +18,9 @@ const translations = {
     appDesc: "อัพโหลดภาพถ่ายน้ำผึ้งของคุณ เพื่อประเมินชนิด คุณลักษณะ และความเป็นธรรมชาติเบื้องต้นด้วยเทคโนโลยี AI",
     uploadTitle: "คลิกเพื่อเลือกรูปภาพน้ำผึ้ง",
     uploadDesc: "รองรับไฟล์ JPG, PNG, HEIC (ขนาดไม่เกิน 10MB)",
+    uploadAction: 'ถ่ายรูปหรืออัปโหลดภาพน้ำผึ้ง',
+    downloadPNG: 'ดาวน์โหลดเป็นรูปภาพ (PNG)',
+    downloadPDF: 'ดาวน์โหลดเป็นเอกสาร (PDF)',
     uploadBtn: "อัพโหลดรูปภาพ",
     noteTitle: "ข้อควรทราบก่อนใช้งาน",
     note1Title: "ประเมินเบื้องต้นเท่านั้น",
@@ -45,12 +50,27 @@ const translations = {
     newBtn: "วิเคราะห์ภาพใหม่",
     errNoKey: "ไม่พบ API Key ระบบกำลังแสดงข้อมูลจำลองเพื่อการทดสอบ UI",
     aiLangInstruction: "ตอบกลับเป็นภาษาไทยเท่านั้น"
+    ,
+    aiSystemInstruction: "ให้วิเคราะห์และตอบกลับผลลัพธ์ทั้งหมด (รวมถึงชื่อประเภทน้ำผึ้ง, เปอร์เซ็นต์ความมั่นใจ, และเหตุผลการประเมิน) เป็นภาษาไทยเท่านั้น ห้ามมีภาษาอื่นปน",
+    brandShort: "Honey Dee Big Bee Farm",
+    errReadFile: 'ไม่สามารถอ่านไฟล์ภาพได้ กรุณาลองใหม่',
+    defaultUsages: ['ชงกับชา', 'ราดแพนเค้ก', 'หมักเนื้อ', 'พอกหน้า'],
+    errorDailyTitle: 'ขออภัยค่ะ',
+    errorRateTitle: 'ระบบหนาแน่นชั่วคราว',
+    errorGeneralTitle: 'เกิดข้อผิดพลาด',
+    errorDailyDesc: 'สิทธิ์การใช้งานฟรีในวันนี้เต็มแล้ว\nกรุณากลับมาลองใหม่อีกครั้งในวันพรุ่งนี้นะคะ',
+    errorRateDesc: 'มีการส่งข้อมูลถี่เกินไปในขณะนี้\nกรุณารอสักครู่แล้วลองใหม่อีกครั้งค่ะ',
+    errorGeneralDesc: 'ไม่สามารถประมวลผลรูปภาพได้ในขณะนี้\nกรุณาตรวจสอบและลองใหม่อีกครั้งค่ะ',
+    modalAcknowledge: 'รับทราบ'
   },
   en: {
     appTitle: "Honey Quality Analysis",
     appDesc: "Upload your honey photo for a preliminary AI assessment of its type, characteristics, and naturalness.",
     uploadTitle: "Click to select a honey image",
     uploadDesc: "Supports JPG, PNG, HEIC (Max 10MB)",
+    uploadAction: 'Take photo or upload your honey image',
+    downloadPNG: 'Download as Image (PNG)',
+    downloadPDF: 'Download as Document (PDF)',
     uploadBtn: "Upload Image",
     noteTitle: "Important Notes",
     note1Title: "Preliminary Assessment Only",
@@ -80,12 +100,27 @@ const translations = {
     newBtn: "Analyze New Image",
     errNoKey: "API Key not found. Displaying mock data for UI testing.",
     aiLangInstruction: "Respond strictly in English language."
+    ,
+    aiSystemInstruction: "Analyze and respond with all results (including honey type names, confidence percentages, and reasons) ONLY in English. Do not include any other language.",
+    brandShort: "Honey Dee Big Bee Farm",
+    errReadFile: 'Unable to read the image file. Please try again.',
+    defaultUsages: ['Stir into tea', 'Drizzle on pancakes', 'Marinate meat', 'Apply as a face mask'],
+    errorDailyTitle: 'Sorry',
+    errorRateTitle: 'Temporary congestion',
+    errorGeneralTitle: 'An error occurred',
+    errorDailyDesc: 'Free usage quota for today has been exhausted.\nPlease try again tomorrow.',
+    errorRateDesc: 'The system is currently busy.\nPlease wait a moment and try again.',
+    errorGeneralDesc: 'Unable to process the image right now.\nPlease check and try again.',
+    modalAcknowledge: 'OK'
   },
   zh: {
     appTitle: "蜂蜜质量分析系统",
     appDesc: "上传您的蜂蜜照片，AI将对其类型、特征和自然度进行初步评估。",
     uploadTitle: "点击选择蜂蜜图片",
     uploadDesc: "支持 JPG, PNG, HEIC (最大 10MB)",
+    uploadAction: '拍照或上传您的蜂蜜图片',
+    downloadPNG: '下载为图片 (PNG)',
+    downloadPDF: '下载为文档 (PDF)',
     uploadBtn: "上传图片",
     noteTitle: "使用前须知",
     note1Title: "仅供初步评估",
@@ -115,8 +150,21 @@ const translations = {
     newBtn: "分析新图片",
     errNoKey: "未找到 API 密钥。显示模拟数据以进行 UI 测试。",
     aiLangInstruction: "必须使用简体中文回答。"
+    ,
+    aiSystemInstruction: "请分析并将所有结果（包括蜂蜜类型名称、置信度百分比和评估理由）仅以简体中文完整返回，禁止混用其他语言。",
+    brandShort: "Honey Dee Big Bee Farm",
+    errReadFile: '无法读取图像文件，请重试。',
+    defaultUsages: ['加入茶中', '淋在煎饼上', '腌制肉类', '做面膜使用'],
+    errorDailyTitle: '抱歉',
+    errorRateTitle: '系统繁忙',
+    errorGeneralTitle: '发生错误',
+    errorDailyDesc: '今天的免费使用额度已用完。\n请明天再试。',
+    errorRateDesc: '系统当前负载较高。\n请稍候再试。',
+    errorGeneralDesc: '当前无法处理图像。\n请检查后重试。',
+    modalAcknowledge: '知道了'
   }
 };
+
 
 type Prediction = { type: string; percentage: number };
 
@@ -141,6 +189,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = translations[lang];
+  const reportRef = useRef<HTMLDivElement | null>(null);
 
   // ฟังก์ชันปิด Error Modal และล้างค่าต่าง ๆ
   const handleCloseErrorModal = () => {
@@ -185,21 +234,17 @@ export default function App() {
 
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
-
     const file = e.target.files?.[0];
     if (!file || isAnalyzing.current) return;
-
+    const reader = new FileReader();
     isAnalyzing.current = true;
     setError(null);
     setIsLoading(true);
-    setScreen('analyzing');
-
-    const reader = new FileReader();
     reader.onload = async (event: ProgressEvent<FileReader>) => {
       const base64String = (event.target?.result as string) || '';
 
       if (!base64String) {
-        setError('ไม่สามารถอ่านไฟล์ภาพได้ กรุณาลองใหม่');
+        setError(t.errReadFile);
         setScreen('home');
         setIsLoading(false);
         isAnalyzing.current = false;
@@ -212,7 +257,7 @@ export default function App() {
         const compressedBase64 = await compressImage(base64String);
         const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
         if (!apiKey) {
-          setError('VITE_GEMINI_API_KEY ไม่ได้ตั้งค่า');
+          setError(t.errNoKey);
           setScreen('home');
           setIsLoading(false);
           isAnalyzing.current = false;
@@ -222,40 +267,17 @@ export default function App() {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
-        const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm". 
-        Analyze this honey image and estimate the top 3 possible honey types.
-        CRITICAL INSTRUCTION: ${t.aiLangInstruction}. The JSON values MUST be written in the selected language.
-        
-        Reply ONLY in valid JSON format with this exact structure (keep keys in English):
-        {
-          "predictions": [
-            {"type": "Name of honey type 1", "percentage": number},
-            {"type": "Name of honey type 2", "percentage": number},
-            {"type": "Name of honey type 3", "percentage": number}
-          ],
-          "conclusion_reason": "Short explanation of why it is predicted as type 1",
-          "characteristics": {
-            "color": "Color description",
-            "clarity": "Clarity description",
-            "viscosity": "Viscosity description"
-          },
-          "naturalnessScore": number 1-100,
-          "benefits": ["Benefit 1", "Benefit 2", "Benefit 3", "Benefit 4"],
-          "usages": ["Usage 1", "Usage 2", "Usage 3", "Usage 4"]
-        }`;
+        const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm".\nAnalyze this honey image and estimate the top 3 possible honey types.\n\nReply ONLY in valid JSON format with this exact structure (keep keys in English):\n{\n  "predictions": [\n    {"type": "Name of honey type 1", "percentage": number},\n    {"type": "Name of honey type 2", "percentage": number},\n    {"type": "Name of honey type 3", "percentage": number}\n  ],\n  "conclusion_reason": "Short explanation of why it is predicted as type 1",\n  "characteristics": {\n    "color": "Color description",\n    "clarity": "Clarity description",\n    "viscosity": "Viscosity description"\n  },\n  "naturalnessScore": number 1-100,\n  "benefits": ["Benefit 1", "Benefit 2", "Benefit 3", "Benefit 4"],\n  "usages": ["Usage 1", "Usage 2", "Usage 3", "Usage 4"]\n}`;
 
-        const mimeMatch = compressedBase64.match(/data:(.*?);base64/);
-        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        const mimeMatch = compressedBase64.match(/data:(.*?);base64/) || [];
+        const mimeType = (mimeMatch as string[])[1] ?? 'image/jpeg';
         const base64Data = compressedBase64.split(',')[1] ?? '';
 
         const response = await model.generateContent({
-          contents: [{
-            role: 'user',
-            parts: [
-              { text: prompt },
-              { inlineData: { mimeType, data: base64Data } }
-            ]
-          }],
+          contents: [
+            { role: 'system', parts: [{ text: t.aiSystemInstruction }] },
+            { role: 'user', parts: [ { text: prompt }, { inlineData: { mimeType, data: base64Data } } ] }
+          ],
           generationConfig: { responseMimeType: 'application/json' }
         });
 
@@ -272,7 +294,7 @@ export default function App() {
           characteristics: parsedData.characteristics || { color: '-', clarity: '-', viscosity: '-' },
           naturalnessScore: parsedData.naturalnessScore || 0,
           benefits: parsedData.benefits && parsedData.benefits.length > 0 ? parsedData.benefits : ['-'],
-          usages: parsedData.usages && parsedData.usages.length > 0 ? parsedData.usages : ['-']
+          usages: parsedData.usages && parsedData.usages.length > 0 ? parsedData.usages : t.defaultUsages
         };
 
         setAiResult(safeData as AiResult);
@@ -301,13 +323,57 @@ export default function App() {
     };
 
     reader.onerror = () => {
-      setError('ไม่สามารถอ่านไฟล์ภาพได้ กรุณาลองใหม่');
+      setError(t.errReadFile);
       setScreen('home');
       setIsLoading(false);
       isAnalyzing.current = false;
     };
 
     reader.readAsDataURL(file);
+  };
+
+  const downloadPNG = async () => {
+    if (!reportRef.current) return;
+    try {
+      const canvas = await html2canvas(reportRef.current, { useCORS: true, scale: 2 });
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `${t.brandShort.replace(/\s+/g, '_')}_${lang}_report.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error('PNG download failed', err);
+      setError((err as Error)?.message || 'Download failed');
+    }
+  };
+
+  const downloadPDF = async () => {
+    if (!reportRef.current) return;
+    try {
+      const canvas = await html2canvas(reportRef.current, { useCORS: true, scale: 2 });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      // fit image into page while keeping aspect
+      const img = new Image();
+      img.src = imgData;
+      await new Promise((res) => (img.onload = res));
+      const imgW = img.width;
+      const imgH = img.height;
+      const ratio = Math.min(pageWidth / imgW, pageHeight / imgH);
+      const width = imgW * ratio;
+      const height = imgH * ratio;
+      const x = (pageWidth - width) / 2;
+      const y = (pageHeight - height) / 2;
+      pdf.addImage(imgData, 'PNG', x, y, width, height);
+      pdf.save(`${t.brandShort.replace(/\s+/g, '_')}_${lang}_report.pdf`);
+    } catch (err) {
+      console.error('PDF download failed', err);
+      setError((err as Error)?.message || 'Download failed');
+    }
   };
 
   return (
@@ -328,9 +394,9 @@ export default function App() {
               <Droplet className="text-white w-5 h-5 sm:w-7 sm:h-7 fill-white" />
             </div>
             <div className="flex flex-col justify-center">
-              <h1 className="text-base sm:text-2xl font-bold text-slate-900 leading-tight whitespace-nowrap">Honey Vision AI</h1>
+              <h1 className="text-base sm:text-2xl font-bold text-slate-900 leading-tight whitespace-nowrap">{t.appTitle}</h1>
               <p className="text-[9px] sm:text-xs font-bold text-amber-600 uppercase tracking-widest leading-tight mt-0.5 whitespace-nowrap">
-                Honey Dee Big Bee Farm
+                {t.brandShort}
               </p>
             </div>
           </div>
@@ -369,11 +435,13 @@ export default function App() {
               <div className="md:col-span-3 order-1">
                 <div 
                   className="bg-white border-2 border-dashed border-amber-300 hover:border-amber-500 hover:bg-amber-50/80 transition-all rounded-3xl p-8 sm:p-14 flex flex-col items-center justify-center cursor-pointer min-h-[250px] shadow-sm group"
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                   <div className="bg-amber-100 p-4 sm:p-5 rounded-full mb-4 sm:mb-6 group-hover:scale-110 transition-transform duration-300">
-                    <Upload className="w-8 h-8 sm:w-10 sm:h-10 text-amber-600" />
+                   <div className="flex items-center gap-3 bg-amber-100 p-4 sm:p-5 rounded-full mb-4 sm:mb-6 group-hover:scale-110 transition-transform duration-300">
+                    <Camera className="w-6 h-6 sm:w-8 sm:h-8 text-amber-600" />
+                    <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-amber-600" />
                   </div>
-                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2 text-center">{t.uploadTitle}</h3>
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2 text-center">{t.uploadAction}</h3>
                   <p className="text-slate-400 text-xs sm:text-sm text-center">{t.uploadDesc}</p>
                   
                   <button
@@ -405,9 +473,9 @@ export default function App() {
                             {errorType === 'daily' ? '⚠️' : errorType === 'rate' ? '⏳' : '❌'}
                           </span>
                           <div className="text-sm text-red-700 font-medium leading-relaxed">
-                            {errorType === 'daily' && '⚠️ ขออภัยค่ะ สิทธิ์ใช้งานฟรีวันนี้เต็มแล้ว'}
-                            {errorType === 'rate' && '⏳ ระบบหนาแน่นชั่วคราว กรุณารอสักครู่แล้วลองใหม่ค่ะ'}
-                            {errorType === 'general' && '❌ เกิดข้อผิดพลาด ไม่สามารถประมวลผลรูปภาพได้'}
+                            {errorType === 'daily' && `⚠️ ${t.errorDailyDesc.split('\n')[0]}`}
+                            {errorType === 'rate' && `⏳ ${t.errorRateDesc.split('\n')[0]}`}
+                            {errorType === 'general' && `❌ ${t.errorGeneralDesc.split('\n')[0]}`}
                           </div>
                         </div>
                       </div>
@@ -467,12 +535,12 @@ export default function App() {
                  )}
                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2 sm:mt-0">{t.reportTitle}</h2>
                  <p className="text-slate-500 text-sm mt-2 flex items-center justify-center sm:justify-start gap-1.5">
-                   {t.reportBy} <span className="hidden sm:inline">•</span> Honey Dee Big Bee Farm
+                   {t.reportBy} <span className="hidden sm:inline">•</span> {t.brandShort}
                  </p>
                </div>
             </div>
 
-            <div className="p-6 md:p-8 space-y-8 sm:space-y-10">
+            <div ref={reportRef} className="p-6 md:p-8 space-y-8 sm:space-y-10">
               
               <section>
                 <h3 className="text-lg font-bold text-slate-900 mb-5 flex items-center gap-2">
@@ -590,9 +658,23 @@ export default function App() {
             </div>
 
             <div className="p-6 md:p-8 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-center gap-4 print:hidden">
+               <div className="flex gap-3 w-full sm:w-auto">
+                 <button 
+                   onClick={downloadPNG}
+                   className="flex-1 sm:flex-none w-full sm:w-auto flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-6 py-3.5 rounded-full font-medium transition-colors shadow-lg shadow-amber-600/20 text-sm sm:text-base"
+                 >
+                   {t.downloadPNG}
+                 </button>
+                 <button 
+                   onClick={downloadPDF}
+                   className="flex-1 sm:flex-none w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-6 py-3.5 rounded-full font-medium transition-colors shadow-lg shadow-slate-900/20 text-sm sm:text-base"
+                 >
+                   {t.downloadPDF}
+                 </button>
+               </div>
                <button 
                  onClick={() => window.print()}
-                 className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-full font-medium transition-colors shadow-lg shadow-slate-900/20 text-sm sm:text-base"
+                 className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-8 py-3.5 rounded-full font-medium transition-colors shadow-sm text-sm sm:text-base"
                >
                  <Printer className="w-5 h-5" /> {t.printBtn}
                </button>
@@ -640,15 +722,15 @@ export default function App() {
               </div>
 
               <h2 className="text-2xl font-bold text-slate-900 mb-3">
-                {errorType === 'daily' && 'ขออภัยค่ะ'}
-                {errorType === 'rate' && 'ระบบหนาแน่นชั่วคราว'}
-                {errorType === 'general' && 'เกิดข้อผิดพลาด'}
+                {errorType === 'daily' && t.errorDailyTitle}
+                {errorType === 'rate' && t.errorRateTitle}
+                {errorType === 'general' && t.errorGeneralTitle}
               </h2>
 
               <p className="text-slate-600 leading-relaxed text-base mb-8 whitespace-pre-line">
-                {errorType === 'daily' && 'สิทธิ์การใช้งานฟรีในวันนี้เต็มแล้ว\nกรุณากลับมาลองใหม่อีกครั้งในวันพรุ่งนี้นะคะ'}
-                {errorType === 'rate' && 'มีการส่งข้อมูลถี่เกินไปในขณะนี้\nกรุณารอสักครู่แล้วลองใหม่อีกครั้งค่ะ'}
-                {errorType === 'general' && 'ไม่สามารถประมวลผลรูปภาพได้ในขณะนี้\nกรุณาตรวจสอบและลองใหม่อีกครั้งค่ะ'}
+                {errorType === 'daily' && t.errorDailyDesc}
+                {errorType === 'rate' && t.errorRateDesc}
+                {errorType === 'general' && t.errorGeneralDesc}
               </p>
 
               {/* Button */}
@@ -661,7 +743,7 @@ export default function App() {
                     'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30'}
                 `}
               >
-                รับทราบ
+                {t.modalAcknowledge}
               </button>
             </div>
           </div>
