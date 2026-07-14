@@ -220,7 +220,7 @@ export default function App() {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
         const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm". 
         Analyze this honey image and estimate the top 3 possible honey types.
