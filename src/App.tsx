@@ -302,11 +302,9 @@ export default function App() {
     });
   };
 
-  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+  const startAnalysis = async (file: File) => {
     try {
-      e.preventDefault();
-      const file = e.target.files?.[0];
-      if (!file || isAnalyzing.current) return;
+      if (isAnalyzing.current) return;
 
       setError(null);
       setIsLoading(true);
@@ -456,12 +454,55 @@ Expected JSON structure:
     }
   };
 
+  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file || isAnalyzing.current) {
+      input.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result;
+      if (!result) {
+        setError(t.errReadFile);
+        input.value = '';
+        return;
+      }
+
+      setImageSrc(result as string);
+      startAnalysis(file);
+      input.value = '';
+    };
+    reader.onerror = (err) => {
+      console.error('FileReader error:', err);
+      alert(t.errReadFile);
+      setError(t.errReadFile);
+      input.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const triggerFilePicker = () => {
+    if (isLoading || isAnalyzing.current) return;
+    fileInputRef.current?.click();
+  };
+
   const handlePrintReport = () => {
     window.print();
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-800 flex flex-col selection:bg-amber-200">
+      <input
+        type="file"
+        id="honey-file-picker"
+        accept="image/*"
+        style={{ display: 'none' }}
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+      />
       
       {/* HEADER WITH LOGO & LANGUAGE SELECTOR */}
       <header className="w-full bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm print:hidden">
@@ -519,7 +560,7 @@ Expected JSON structure:
               <div className="md:col-span-3 order-1">
                 <div 
                   className="bg-white border-2 border-dashed border-amber-300 hover:border-amber-500 hover:bg-amber-50/80 transition-all rounded-3xl p-8 sm:p-14 flex flex-col items-center justify-center cursor-pointer min-h-[250px] shadow-sm group"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={triggerFilePicker}
                 >
                   <div className="flex items-center gap-3 p-4 sm:p-5 rounded-full mb-4 sm:mb-6 group-hover:scale-110 transition-transform duration-300" style={{ backgroundColor: '#fff7ed' }}>
                     <Camera className="w-6 h-6 sm:w-8 sm:h-8" style={{ color: '#f59e0b' }} />
@@ -528,25 +569,17 @@ Expected JSON structure:
                   <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2 text-center">{t.uploadAction}</h3>
                   <p className="text-slate-400 text-xs sm:text-sm text-center">{t.uploadDesc}</p>
                   
-                  <button
-                    className="mt-6 sm:mt-8 bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-full font-medium shadow-md shadow-amber-500/20 transition-all text-sm sm:text-base w-full sm:w-auto disabled:cursor-not-allowed disabled:bg-amber-300"
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isLoading}
-                  >
-                    {t.uploadBtn}
-                  </button>
+                  <label htmlFor="honey-file-picker" className="mt-6 sm:mt-8 w-full sm:w-auto">
+                    <button
+                      className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-full font-medium shadow-md shadow-amber-500/20 transition-all text-sm sm:text-base w-full sm:w-auto disabled:cursor-not-allowed disabled:bg-amber-300"
+                      type="button"
+                      onClick={triggerFilePicker}
+                      disabled={isLoading}
+                    >
+                      {t.uploadBtn}
+                    </button>
+                  </label>
                 </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  ref={fileInputRef}
-                  onChange={(event) => {
-                    handleImageUpload(event);
-                    event.target.value = '';
-                  }}
-                />
                 {imageSrc && (
                   <div className="mt-6 rounded-3xl overflow-hidden border border-slate-200 bg-slate-50">
                     <img src={imageSrc} alt="Selected honey" className="w-full h-auto object-cover" />
