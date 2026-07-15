@@ -704,21 +704,6 @@ Expected JSON structure:
         {screen === 'result' && analysisResult && activeAnalysis && (
           <div className="animate-in fade-in max-w-3xl mx-auto bg-white rounded-[2rem] shadow-xl overflow-hidden border border-slate-200 print:shadow-none print:border-none print:w-full print:rounded-none">
             
-            <div className="p-6 md:p-8 border-b border-slate-100 flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 bg-slate-50/50">
-               <img src={imageSrc} alt="Honey" className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl object-cover shadow-md border-4 border-white shrink-0" />
-               <div className="w-full text-center sm:text-left">
-                 {error && (
-                  <div className="bg-amber-100/60 text-amber-900 text-xs sm:text-sm p-3 rounded-xl flex items-center justify-center sm:justify-start gap-2 mb-3 border border-amber-200">
-                    <AlertCircle className="w-4 h-4 shrink-0" /> <span className="leading-tight">{error}</span>
-                  </div>
-                 )}
-                 <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2 sm:mt-0">{t.reportTitle}</h2>
-                 <p className="text-slate-500 text-sm mt-2 flex items-center justify-center sm:justify-start gap-1.5">
-                   {t.reportBy} <span className="hidden sm:inline">•</span> {t.brandShort}
-                 </p>
-               </div>
-            </div>
-
             <div id="honey-report-card" ref={reportRef} style={{ backgroundColor: '#ffffff', padding:'24px', display:'flex', flexDirection:'column', gap:'30px' }}>
               <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:'20px', alignItems:'center' }}>
