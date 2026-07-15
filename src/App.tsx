@@ -1,6 +1,6 @@
 // force rebuild
 
-import { useState, useRef, useEffect, type ChangeEvent } from 'react';
+import { useState, useRef, type ChangeEvent } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -260,15 +260,7 @@ export default function App() {
   const t = translations[lang];
   const activeAnalysis = analysisResult?.resultsByLanguage[lang] ?? null;
   const reportRef = useRef<HTMLDivElement | null>(null);
-  const imageUrlRef = useRef<string | null>(null);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-
-  const revokePreviewUrl = () => {
-    if (imageUrlRef.current) {
-      URL.revokeObjectURL(imageUrlRef.current);
-      imageUrlRef.current = null;
-    }
-  };
 
   const loadPreviewImage = (src: string) => {
     return new Promise<void>((resolve, reject) => {
@@ -288,18 +280,11 @@ export default function App() {
     });
   };
 
-  useEffect(() => {
-    return () => {
-      revokePreviewUrl();
-    };
-  }, []);
-
   // ฟังก์ชันปิด Error Modal และล้างค่าต่าง ๆ
   const handleCloseErrorModal = () => {
     setIsErrorModalOpen(false);
     setErrorType(null);
     setError(null);
-    revokePreviewUrl();
     setImageSrc('');
     setScreen('home');
   };
@@ -342,22 +327,18 @@ export default function App() {
       const file = e.target.files?.[0];
       if (!file || isAnalyzing.current) return;
 
-      revokePreviewUrl();
       setError(null);
       setIsLoading(true);
-      setScreen('home');
-
-      const previewUrl = URL.createObjectURL(file);
-      imageUrlRef.current = previewUrl;
-      await loadPreviewImage(previewUrl);
-      setImageSrc(previewUrl);
-      setScreen('analyzing');
       isAnalyzing.current = true;
 
       const base64String = await readFileAsDataURL(file);
       if (!base64String) {
         throw new Error('No image data available');
       }
+
+      await loadPreviewImage(base64String);
+      setImageSrc(base64String);
+      setScreen('analyzing');
 
       const compressedBase64 = await compressImage(base64String);
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
@@ -374,7 +355,9 @@ export default function App() {
 
       const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm".
 Analyze this honey image and estimate the top 3 possible honey types.
-Respond ONLY with a JSON object containing localized results in Thai (th), English (en), and Simplified Chinese (zh).
+    Respond ONLY with one valid JSON object that includes complete localized results for Thai (th), English (en), and Simplified Chinese (zh) in the same response.
+    Do not omit any of these keys: naturalnessScore, th, en, zh.
+    Each of th, en, and zh must include: type, reason, color, clarity, viscosity, predictions, benefits, usages.
 Do not include any text outside the JSON object.
 
 Expected JSON structure:
@@ -455,8 +438,8 @@ Expected JSON structure:
           predictions: Array.isArray(raw.predictions)
             ? raw.predictions.map((item: any) => ({ type: String(item.type || '-'), percentage: Number(item.percentage || 0) }))
             : [{ type: '-', percentage: 0 }],
-          benefits: Array.isArray(raw.benefits) && raw.benefits.length > 0 ? raw.benefits.map(String) : t.benefits,
-          usages: Array.isArray(raw.usages) && raw.usages.length > 0 ? raw.usages.map(String) : t.usages
+          benefits: Array.isArray(raw.benefits) && raw.benefits.length > 0 ? raw.benefits.map(String) : translations[langKey].benefits,
+          usages: Array.isArray(raw.usages) && raw.usages.length > 0 ? raw.usages.map(String) : translations[langKey].usages
         };
       };
 
@@ -497,10 +480,7 @@ Expected JSON structure:
     if (!element) return;
     try {
       const canvas = await html2canvas(element, {
-        useCORS: true,
-        allowTaint: true,
-        scale: 2,
-        backgroundColor: '#ffffff'
+        useCORS: true
       });
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
@@ -519,10 +499,7 @@ Expected JSON structure:
     if (!element) return;
     try {
       const canvas = await html2canvas(element, {
-        useCORS: true,
-        allowTaint: true,
-        scale: 2,
-        backgroundColor: '#ffffff'
+        useCORS: true
       });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -654,6 +631,9 @@ Expected JSON structure:
                       </div>
                     )}
                   </div>
+                )}
+                {error && (
+                  <p className="mt-3 text-sm text-red-600 px-1">{error}</p>
                 )}
               </div>
 
