@@ -478,9 +478,18 @@ Expected JSON structure:
   const downloadAsPNG = async () => {
     const element = document.getElementById('honey-report-card');
     if (!element) return;
+    
+    // 1. ดึงสไตล์ชีตทั้งหมดบนหน้าเว็บมาสั่งปิดใช้งานชั่วคราว เพื่อบล็อกไม่ให้ html2canvas แครชจาก oklch ส่วนกลาง
+    const sheets = Array.from(document.styleSheets);
+    sheets.forEach(sheet => {
+      try { sheet.disabled = true; } catch (e) {}
+    });
+
     try {
       const canvas = await html2canvas(element, {
-        useCORS: true
+        useCORS: true,
+        scale: 2,
+        backgroundColor: '#ffffff'
       });
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
@@ -491,38 +500,46 @@ Expected JSON structure:
     } catch (error) {
       console.error('PNG Download Error:', error);
       alert('ไม่สามารถดาวน์โหลดรูปภาพได้ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      // 2. เมื่อทำงานเสร็จ (ไม่ว่าจะสำเร็จหรือ Error) ให้เปิดใช้งานสไตล์ชีตกลับมาทันที
+      sheets.forEach(sheet => {
+        try { sheet.disabled = false; } catch (e) {}
+      });
     }
   };
 
   const downloadAsPDF = async () => {
     const element = document.getElementById('honey-report-card');
     if (!element) return;
+
+    // 1. ปิดใช้งานสไตล์ชีตทั้งหมดชั่วคราว
+    const sheets = Array.from(document.styleSheets);
+    sheets.forEach(sheet => {
+      try { sheet.disabled = true; } catch (e) {}
+    });
+
     try {
       const canvas = await html2canvas(element, {
-        useCORS: true
+        useCORS: true,
+        scale: 2,
+        backgroundColor: '#ffffff'
       });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgWidth = 210;
-      const pageHeight = 295;
+      const position = 0;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-
       pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
       pdf.save('honey-dee-report.pdf');
       setIsDownloadModalOpen(false);
     } catch (error) {
       console.error('PDF Download Error:', error);
       alert('ไม่สามารถดาวน์โหลด PDF ได้ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      // 2. เปิดใช้งานสไตล์ชีตกลับมาทันที
+      sheets.forEach(sheet => {
+        try { sheet.disabled = false; } catch (e) {}
+      });
     }
   };
 
