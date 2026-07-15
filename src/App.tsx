@@ -229,19 +229,27 @@ const translations: Record<'th' | 'en' | 'zh', TranslationStrings> = {
 
 type Prediction = { type: string; percentage: number };
 
-type AiResult = {
+type LocalizedAnalysis = {
+  type: string;
+  reason: string;
+  color: string;
+  clarity: string;
+  viscosity: string;
   predictions: Prediction[];
-  conclusion_reason: string;
-  characteristics: { color: string; clarity: string; viscosity: string };
-  naturalnessScore: number;
   benefits: string[];
   usages: string[];
 };
+
+type AnalysisResult = {
+  naturalnessScore: number;
+  resultsByLanguage: Record<'th' | 'en' | 'zh', LocalizedAnalysis>;
+};
+
 export default function App() {
   const [lang, setLang] = useState<'th' | 'en' | 'zh'>('th');
   const [screen, setScreen] = useState<'home' | 'analyzing' | 'result'>('home');
   const [imageSrc, setImageSrc] = useState<string>('');
-  const [aiResult, setAiResult] = useState<AiResult | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorType, setErrorType] = useState<'daily' | 'rate' | 'general' | null>(null);
@@ -250,6 +258,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = translations[lang];
+  const activeAnalysis = analysisResult?.resultsByLanguage[lang] ?? null;
   const reportRef = useRef<HTMLDivElement | null>(null);
   const imageUrlRef = useRef<string | null>(null);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
@@ -259,6 +268,24 @@ export default function App() {
       URL.revokeObjectURL(imageUrlRef.current);
       imageUrlRef.current = null;
     }
+  };
+
+  const loadPreviewImage = (src: string) => {
+    return new Promise<void>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('Image preview failed to load'));
+      img.src = src;
+    });
+  };
+
+  const readFileAsDataURL = (file: File) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Unable to read image file'));
+      reader.readAsDataURL(file);
+    });
   };
 
   useEffect(() => {
@@ -309,117 +336,160 @@ export default function App() {
     });
   };
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const file = e.target.files?.[0];
-    if (!file || isAnalyzing.current) return;
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    try {
+      e.preventDefault();
+      const file = e.target.files?.[0];
+      if (!file || isAnalyzing.current) return;
 
-    if (imageUrlRef.current) {
-      URL.revokeObjectURL(imageUrlRef.current);
-      imageUrlRef.current = null;
-    }
+      revokePreviewUrl();
+      setError(null);
+      setIsLoading(true);
+      setScreen('home');
 
-    const previewUrl = URL.createObjectURL(file);
-    imageUrlRef.current = previewUrl;
-    setImageSrc(previewUrl);
+      const previewUrl = URL.createObjectURL(file);
+      imageUrlRef.current = previewUrl;
+      await loadPreviewImage(previewUrl);
+      setImageSrc(previewUrl);
+      setScreen('analyzing');
+      isAnalyzing.current = true;
 
-    const reader = new FileReader();
-    isAnalyzing.current = true;
-    setError(null);
-    setIsLoading(true);
-    setScreen('analyzing');
-    reader.onload = async (event: ProgressEvent<FileReader>) => {
-      const base64String = (event.target?.result as string) || '';
-
+      const base64String = await readFileAsDataURL(file);
       if (!base64String) {
-          revokePreviewUrl();
+        throw new Error('No image data available');
+      }
+
+      const compressedBase64 = await compressImage(base64String);
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
+      if (!apiKey) {
+        setError(t.errNoKey);
         setScreen('home');
         setIsLoading(false);
         isAnalyzing.current = false;
         return;
       }
 
-      try {
-        const compressedBase64 = await compressImage(base64String);
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
-        if (!apiKey) {
-          setError(t.errNoKey);
-          setScreen('home');
-          setIsLoading(false);
-          isAnalyzing.current = false;
-          return;
-        }
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+      const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm".
+Analyze this honey image and estimate the top 3 possible honey types.
+Respond ONLY with a JSON object containing localized results in Thai (th), English (en), and Simplified Chinese (zh).
+Do not include any text outside the JSON object.
 
-        const languageNameMap = { th: 'Thai', en: 'English', zh: 'Chinese' } as const;
-        const currentLanguageName = languageNameMap[lang];
-        const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm".\nAnalyze this honey image and estimate the top 3 possible honey types.\n\nYou MUST return the entire analysis result, including the predicted honey type name, percentage, assessment conclusion, reasoning, and physical characteristics, in the language matching: ${currentLanguageName} absolutely. Do not mix Thai language if the requested language is English or Chinese.\n\nReply ONLY in valid JSON format with this exact structure (keep keys in English):\n{\n  "predictions": [\n    {"type": "Name of honey type 1", "percentage": number},\n    {"type": "Name of honey type 2", "percentage": number},\n    {"type": "Name of honey type 3", "percentage": number}\n  ],\n  "conclusion_reason": "Short explanation of why it is predicted as type 1",\n  "characteristics": {\n    "color": "Color description",\n    "clarity": "Clarity description",\n    "viscosity": "Viscosity description"\n  },\n  "naturalnessScore": number 1-100,\n  "benefits": ["Benefit 1", "Benefit 2", "Benefit 3", "Benefit 4"],\n  "usages": ["Usage 1", "Usage 2", "Usage 3", "Usage 4"]\n}`;
+Expected JSON structure:
+{
+  "naturalnessScore": number,
+  "th": {
+    "type": "Honey type name in Thai",
+    "reason": "Short assessment reason in Thai",
+    "color": "Color description in Thai",
+    "clarity": "Clarity description in Thai",
+    "viscosity": "Viscosity description in Thai",
+    "predictions": [
+      {"type": "Honey type 1 in Thai", "percentage": number},
+      {"type": "Honey type 2 in Thai", "percentage": number},
+      {"type": "Honey type 3 in Thai", "percentage": number}
+    ],
+    "benefits": ["Benefit 1 in Thai", "Benefit 2 in Thai", "Benefit 3 in Thai", "Benefit 4 in Thai"],
+    "usages": ["Usage 1 in Thai", "Usage 2 in Thai", "Usage 3 in Thai", "Usage 4 in Thai"]
+  },
+  "en": {
+    "type": "Honey type name in English",
+    "reason": "Short assessment reason in English",
+    "color": "Color description in English",
+    "clarity": "Clarity description in English",
+    "viscosity": "Viscosity description in English",
+    "predictions": [
+      {"type": "Honey type 1 in English", "percentage": number},
+      {"type": "Honey type 2 in English", "percentage": number},
+      {"type": "Honey type 3 in English", "percentage": number}
+    ],
+    "benefits": ["Benefit 1 in English", "Benefit 2 in English", "Benefit 3 in English", "Benefit 4 in English"],
+    "usages": ["Usage 1 in English", "Usage 2 in English", "Usage 3 in English", "Usage 4 in English"]
+  },
+  "zh": {
+    "type": "蜂蜜类型名称（中文）",
+    "reason": "简短评估理由（中文）",
+    "color": "颜色描述（中文）",
+    "clarity": "清晰度描述（中文）",
+    "viscosity": "粘稠度描述（中文）",
+    "predictions": [
+      {"type": "蜂蜜类型1（中文）", "percentage": number},
+      {"type": "蜂蜜类型2（中文）", "percentage": number},
+      {"type": "蜂蜜类型3（中文）", "percentage": number}
+    ],
+    "benefits": ["好处1（中文）", "好处2（中文）", "好处3（中文）", "好处4（中文）"],
+    "usages": ["使用方式1（中文）", "使用方式2（中文）", "使用方式3（中文）", "使用方式4（中文）"]
+  }
+}`;
 
-        const mimeMatch = compressedBase64.match(/data:(.*?);base64/) || [];
-        const mimeType = (mimeMatch as string[])[1] ?? 'image/jpeg';
-        const base64Data = compressedBase64.split(',')[1] ?? '';
+      const mimeMatch = compressedBase64.match(/data:(.*?);base64/) || [];
+      const mimeType = (mimeMatch as string[])[1] ?? 'image/jpeg';
+      const base64Data = compressedBase64.split(',')[1] ?? '';
 
-        const response = await model.generateContent({
-          contents: [
-            { role: 'system', parts: [{ text: t.aiSystemInstruction }] },
-            { role: 'user', parts: [ { text: prompt }, { inlineData: { mimeType, data: base64Data } } ] }
-          ],
-          generationConfig: { responseMimeType: 'application/json' }
-        });
+      const response = await model.generateContent({
+        contents: [
+          { role: 'system', parts: [{ text: 'Return only valid JSON for the requested schema in Thai, English, and Chinese.' }] },
+          { role: 'user', parts: [ { text: prompt }, { inlineData: { mimeType, data: base64Data } } ] }
+        ],
+        generationConfig: { responseMimeType: 'application/json' }
+      });
 
-        const text = response?.response?.text?.() || '';
-        if (!text) {
-          throw new Error('No data returned');
-        }
-
-        const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsedData = JSON.parse(cleanText);
-        const safeData = {
-          predictions: parsedData.predictions || [{ type: '-', percentage: 0 }],
-          conclusion_reason: parsedData.conclusion_reason || '-',
-          characteristics: parsedData.characteristics || { color: '-', clarity: '-', viscosity: '-' },
-          naturalnessScore: parsedData.naturalnessScore || 0,
-          benefits: parsedData.benefits && parsedData.benefits.length > 0 ? parsedData.benefits : t.benefits,
-          usages: parsedData.usages && parsedData.usages.length > 0 ? parsedData.usages : t.usages
-        };
-
-        setAiResult(safeData as AiResult);
-        setIsLoading(false);
-        setScreen('result');
-      } catch (err) {
-        console.error('AI Analysis Failed:', err);
-        
-        // ตรวจสอบและแยกประเภท Error
-        const errorMessage = (err as Error)?.message || '';
-        
-        if (errorMessage.includes('limit: 0') || errorMessage.includes('Quota exceeded')) {
-          setErrorType('daily');
-        } else if (errorMessage.includes('Please retry in') || errorMessage.includes('429')) {
-          setErrorType('rate');
-        } else {
-          setErrorType('general');
-        }
-        
-        setScreen('home');
-        setIsErrorModalOpen(true);
-        setIsLoading(false);
-        isAnalyzing.current = false;
-      } finally {
-        isAnalyzing.current = false;
+      const text = response?.response?.text?.() || '';
+      if (!text) {
+        throw new Error('No data returned');
       }
-    };
 
-    reader.onerror = () => {
-      revokePreviewUrl();
+      const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsedData = JSON.parse(cleanText);
+
+      const getLocalized = (langKey: 'th' | 'en' | 'zh') => {
+        const raw = parsedData[langKey] || {};
+        return {
+          type: String(raw.type || '-'),
+          reason: String(raw.reason || '-'),
+          color: String(raw.color || '-'),
+          clarity: String(raw.clarity || '-'),
+          viscosity: String(raw.viscosity || '-'),
+          predictions: Array.isArray(raw.predictions)
+            ? raw.predictions.map((item: any) => ({ type: String(item.type || '-'), percentage: Number(item.percentage || 0) }))
+            : [{ type: '-', percentage: 0 }],
+          benefits: Array.isArray(raw.benefits) && raw.benefits.length > 0 ? raw.benefits.map(String) : t.benefits,
+          usages: Array.isArray(raw.usages) && raw.usages.length > 0 ? raw.usages.map(String) : t.usages
+        };
+      };
+
+      const safeData: AnalysisResult = {
+        naturalnessScore: Number(parsedData.naturalnessScore ?? 0),
+        resultsByLanguage: {
+          th: getLocalized('th'),
+          en: getLocalized('en'),
+          zh: getLocalized('zh')
+        }
+      };
+
+      setAnalysisResult(safeData);
+      setIsLoading(false);
+      setScreen('result');
+    } catch (err) {
+      console.error('Image upload or AI analysis failed:', err);
+      const errorMessage = (err as Error)?.message || '';
+      if (errorMessage.includes('limit: 0') || errorMessage.includes('Quota exceeded')) {
+        setErrorType('daily');
+      } else if (errorMessage.includes('Please retry in') || errorMessage.includes('429')) {
+        setErrorType('rate');
+      } else {
+        setErrorType('general');
+      }
       setError(t.errReadFile);
       setScreen('home');
+      setIsErrorModalOpen(true);
       setIsLoading(false);
       isAnalyzing.current = false;
-    };
-
-    reader.readAsDataURL(file);
+    } finally {
+      isAnalyzing.current = false;
+    }
   };
 
   const downloadPNG = async () => {
@@ -549,7 +619,6 @@ export default function App() {
                 <input
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   className="hidden"
                   ref={fileInputRef}
                   onChange={(event) => {
@@ -632,7 +701,7 @@ export default function App() {
         )}
 
         {/* --- SCREEN 3: RESULT --- */}
-        {screen === 'result' && aiResult && (
+        {screen === 'result' && analysisResult && activeAnalysis && (
           <div className="animate-in fade-in max-w-3xl mx-auto bg-white rounded-[2rem] shadow-xl overflow-hidden border border-slate-200 print:shadow-none print:border-none print:w-full print:rounded-none">
             
             <div className="p-6 md:p-8 border-b border-slate-100 flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 bg-slate-50/50">
@@ -650,127 +719,131 @@ export default function App() {
                </div>
             </div>
 
-            <div id="honey-report-card" ref={reportRef} style={{ backgroundColor: '#ffffff' }} className="p-6 md:p-8 space-y-8 sm:space-y-10">
-              
-              <section>
-                <h3 className="text-lg font-bold text-slate-900 mb-5 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-slate-600" /> {t.predTitle}
-                </h3>
-                <div className="space-y-5 px-1 sm:px-2">
-                  {aiResult.predictions?.map((item, idx) => (
-                    <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-4">
-                      <div className="flex justify-between sm:w-40 items-center">
-                        <span className="text-sm font-semibold text-slate-700">{item.type}</span>
-                        <span className="sm:hidden text-sm font-bold text-slate-900">{item.percentage}%</span>
-                      </div>
-                      <div className="flex-1 h-3 sm:h-3.5 bg-slate-100 rounded-full overflow-hidden w-full">
-                        <div
-                          className="h-full rounded-full transition-all duration-1000"
-                          style={{ width: `${item.percentage}%`, backgroundColor: idx === 0 ? '#f59e0b' : idx === 1 ? '#fbbf24' : '#cbd5e1' }}
-                        ></div>
-                      </div>
-                      <div className="hidden sm:block w-12 text-right text-sm sm:text-base font-bold text-slate-900">
-                        {item.percentage}%
-                      </div>
-                    </div>
-                  ))}
+            <div id="honey-report-card" ref={reportRef} style={{ backgroundColor: '#ffffff', padding:'24px', display:'flex', flexDirection:'column', gap:'30px' }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'20px', alignItems:'center' }}>
+                  <div style={{ width:'120px', height:'120px', borderRadius:'24px', overflow:'hidden', boxShadow:'0 18px 30px rgba(0,0,0,0.08)', border:'4px solid #ffffff' }}>
+                    <img src={imageSrc} alt="Honey" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                  </div>
+                  <div style={{ minWidth:'220px', flex:'1' }}>
+                    <h2 style={{ margin:'0 0 10px 0', fontSize:'28px', lineHeight:1.1, fontWeight:800, color:'#0f172a' }}>{t.reportTitle}</h2>
+                    <p style={{ margin:0, color:'#475569', fontSize:'15px', lineHeight:1.7 }}>{t.reportBy} • {t.brandShort}</p>
+                  </div>
                 </div>
-              </section>
 
-              <section className="p-6 rounded-2xl relative overflow-hidden shadow-sm" style={{ background: 'linear-gradient(135deg,#fffbeb 0%,#fff7ed 100%)', border: '1px solid #f1f5f9' }}>
-                <div style={{ position: 'absolute', right: -24, top: -24, opacity: 0.05, pointerEvents: 'none' }}>
-                  <BadgeCheck className="w-40 h-40" style={{ color: '#92400e' }} />
-                </div>
-                <h3 className="mb-3 flex items-center gap-2 relative z-10 text-lg" style={{ fontWeight: 700, color: '#92400e' }}>
-                  <Sparkles className="w-5 h-5" style={{ color: '#f59e0b' }} /> {t.concTitle}
-                </h3>
-                <div className="relative z-10">
-                  <p style={{ fontSize: '0.9375rem', lineHeight: '1.6', color: '#92400e' }}>
-                    {t.concFrom} <b style={{ backgroundColor: 'rgba(254,243,199,0.6)', padding: '0 8px', borderRadius: 6, color: '#78350f' }}>{aiResult.predictions?.[0]?.type}</b> {t.concProb} <b style={{ color: '#b45309', fontSize: '1.125rem' }}>{aiResult.predictions?.[0]?.percentage}%</b>
-                  </p>
-                  <p style={{ color: '#92400e', marginTop: 12, fontSize: '0.875rem', borderTop: '1px solid rgba(226,232,240,0.6)', paddingTop: 12 }}>
-                    <b>{t.concReason}</b> {aiResult.conclusion_reason}
-                  </p>
-                </div>
-              </section>
+                <section style={{ display:'flex', flexDirection:'column', gap:'18px' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+                    <FileText style={{ width:20, height:20, color:'#334155' }} />
+                    <h3 style={{ margin:0, fontSize:'20px', fontWeight:700, color:'#0f172a' }}>{t.predTitle}</h3>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+                    {activeAnalysis.predictions.map((item, idx) => (
+                      <div key={idx} style={{ display:'flex', flexWrap:'wrap', gap:'12px', alignItems:'center' }}>
+                        <div style={{ flex:'1 1 220px', display:'flex', justifyContent:'space-between', gap:'10px', minWidth:'180px' }}>
+                          <span style={{ fontSize:'14px', fontWeight:600, color:'#334155' }}>{item.type}</span>
+                          <span style={{ fontSize:'14px', fontWeight:700, color:'#0f172a' }}>{item.percentage}%</span>
+                        </div>
+                        <div style={{ flex:'1 1 160px', minWidth:'160px', height:'12px', backgroundColor:'#e2e8f0', borderRadius:'9999px', overflow:'hidden' }}>
+                          <div style={{ width:`${item.percentage}%`, height:'100%', backgroundColor: idx === 0 ? '#f59e0b' : idx === 1 ? '#fbbf24' : '#cbd5e1', borderRadius:'9999px' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
 
-              <section className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
-                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
-                    <h3 className="text-base font-bold text-slate-800 mb-5 flex items-center gap-2">
-                      <Activity className="w-5 h-5 text-blue-600" /> {t.physTitle}
-                    </h3>
-                    <div className="space-y-4">
-                       <div className="flex flex-wrap sm:flex-nowrap justify-between gap-1 border-b border-slate-200 pb-3">
-                         <span className="text-slate-500 text-sm sm:text-base w-full sm:w-auto">{t.physColor}</span>
-                         <span className="font-semibold text-slate-900 text-sm sm:text-base w-full sm:w-auto text-right break-words">{aiResult.characteristics?.color}</span>
-                       </div>
-                       <div className="flex flex-wrap sm:flex-nowrap justify-between gap-1 border-b border-slate-200 pb-3">
-                         <span className="text-slate-500 text-sm sm:text-base w-full sm:w-auto">{t.physClarity}</span>
-                         <span className="font-semibold text-slate-900 text-sm sm:text-base w-full sm:w-auto text-right break-words">{aiResult.characteristics?.clarity}</span>
-                       </div>
-                       <div className="flex flex-wrap sm:flex-nowrap justify-between gap-1">
-                         <span className="text-slate-500 text-sm sm:text-base w-full sm:w-auto">{t.physVisc}</span>
-                         <span className="font-semibold text-slate-900 text-sm sm:text-base w-full sm:w-auto text-right break-words">{aiResult.characteristics?.viscosity}</span>
-                       </div>
+                <section style={{ position:'relative', background:'linear-gradient(135deg,#fffbeb 0%,#fff7ed 100%)', border:'1px solid #f1f5f9', borderRadius:'24px', padding:'24px', overflow:'hidden' }}>
+                  <div style={{ position:'absolute', right:'-24px', top:'-24px', opacity:0.05, pointerEvents:'none' }}>
+                    <BadgeCheck style={{ width:'160px', height:'160px', color:'#92400e' }} />
+                  </div>
+                  <div style={{ position:'relative', zIndex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'16px' }}>
+                      <Sparkles style={{ width:20, height:20, color:'#f59e0b' }} />
+                      <h3 style={{ margin:0, fontSize:'18px', fontWeight:700, color:'#92400e' }}>{t.concTitle}</h3>
                     </div>
-                 </div>
-
-                 <div className="rounded-2xl p-6 text-white flex flex-col justify-center items-center shadow-inner" style={{ background: 'linear-gradient(135deg,#fb923c 0%,#f59e0b 100%)' }}>
-                    <h3 className="text-sm sm:text-base font-medium mb-2" style={{ color: '#fff7ed' }}>{t.natTitle}</h3>
-                    <div className="flex items-baseline gap-1 my-2">
-                      <span className="text-6xl sm:text-7xl font-black drop-shadow-sm">{aiResult.naturalnessScore}</span>
-                      <span className="text-2xl sm:text-3xl font-bold opacity-80">%</span>
-                    </div>
-                    <p className="text-xs sm:text-sm mt-2 text-center" style={{ color: 'rgba(255,255,255,0.9)', background: 'rgba(0,0,0,0.08)', padding: '6px 12px', borderRadius: 999 }}>
-                      {t.natDesc}
+                    <p style={{ margin:0, fontSize:'15px', lineHeight:1.75, color:'#92400e' }}>
+                      {t.concFrom} <b style={{ backgroundColor:'rgba(254,243,199,0.6)', padding:'0 8px', borderRadius:'6px', color:'#78350f' }}>{activeAnalysis.predictions[0]?.type}</b> {t.concProb} <b style={{ color:'#b45309', fontSize:'18px' }}>{activeAnalysis.predictions[0]?.percentage}%</b>
                     </p>
-                 </div>
-              </section>
+                    <p style={{ margin:'16px 0 0 0', color:'#92400e', fontSize:'14px', lineHeight:1.8, borderTop:'1px solid rgba(226,232,240,0.6)', paddingTop:'16px' }}>
+                      <b>{t.concReason}</b> {activeAnalysis.reason}
+                    </p>
+                  </div>
+                </section>
 
-              <section className="border-t border-slate-100 pt-8">
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 sm:gap-10">
-                   <div>
-                     <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-5 flex items-center gap-2 border-b border-slate-100 pb-2">
-                       <Heart className="w-5 h-5 text-rose-500" /> {t.benTitle}
-                     </h3>
-                     <div className="flex flex-col gap-3">
-                       {t.benefits.map((item: string, idx: number) => (
-                         <div key={idx} className="flex items-start gap-3 p-3 bg-green-50/70 rounded-xl border border-green-100/50">
-                           <Check className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
-                           <span className="text-sm sm:text-base text-slate-700 leading-relaxed text-balance break-words w-full">{item}</span>
-                         </div>
-                       ))}
-                     </div>
-                   </div>
+                <section style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px' }}>
+                  <div style={{ backgroundColor:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'24px', padding:'24px' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'20px' }}>
+                      <Activity style={{ width:20, height:20, color:'#2563eb' }} />
+                      <h4 style={{ margin:0, fontSize:'16px', fontWeight:700, color:'#0f172a' }}>{t.physTitle}</h4>
+                    </div>
+                    <div style={{ display:'grid', gap:'14px' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', borderBottom:'1px solid #e2e8f0', paddingBottom:'12px' }}>
+                        <span style={{ color:'#64748b', fontSize:'14px' }}>{t.physColor}</span>
+                        <span style={{ color:'#0f172a', fontWeight:600, fontSize:'14px', textAlign:'right' }}>{activeAnalysis.color}</span>
+                      </div>
+                      <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', borderBottom:'1px solid #e2e8f0', paddingBottom:'12px' }}>
+                        <span style={{ color:'#64748b', fontSize:'14px' }}>{t.physClarity}</span>
+                        <span style={{ color:'#0f172a', fontWeight:600, fontSize:'14px', textAlign:'right' }}>{activeAnalysis.clarity}</span>
+                      </div>
+                      <div style={{ display:'flex', justifyContent:'space-between', gap:'10px' }}>
+                        <span style={{ color:'#64748b', fontSize:'14px' }}>{t.physVisc}</span>
+                        <span style={{ color:'#0f172a', fontWeight:600, fontSize:'14px', textAlign:'right' }}>{activeAnalysis.viscosity}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ borderRadius:'24px', padding:'24px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'linear-gradient(135deg,#fb923c 0%,#f59e0b 100%)', color:'#fff' }}>
+                    <h4 style={{ margin:0, fontSize:'14px', fontWeight:600, color:'rgba(255,247,237,0.95)' }}>{t.natTitle}</h4>
+                    <div style={{ display:'flex', alignItems:'baseline', gap:'8px', margin:'18px 0' }}>
+                      <span style={{ fontSize:'56px', lineHeight:1, fontWeight:900 }}>{analysisResult.naturalnessScore}</span>
+                      <span style={{ fontSize:'24px', fontWeight:700, opacity:0.9 }}>%</span>
+                    </div>
+                    <p style={{ margin:0, textAlign:'center', fontSize:'13px', lineHeight:1.6, color:'rgba(255,255,255,0.92)', backgroundColor:'rgba(0,0,0,0.08)', padding:'8px 14px', borderRadius:'999px' }}>{t.natDesc}</p>
+                  </div>
+                </section>
 
-                   <div>
-                     <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-5 flex items-center gap-2 border-b border-slate-100 pb-2">
-                       <Utensils className="w-5 h-5 text-orange-500" /> {t.useTitle}
-                     </h3>
-                     <div className="flex flex-col gap-3">
-                       {t.usages.map((item: string, idx: number) => (
-                         <div key={idx} className="flex items-start gap-3 p-3 bg-amber-50/70 rounded-xl border border-amber-100/50">
-                           <Coffee className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                           <span className="text-sm sm:text-base text-slate-700 leading-relaxed text-balance break-words w-full">{item}</span>
-                         </div>
-                       ))}
-                     </div>
-                   </div>
-                 </div>
-              </section>
+                <section style={{ borderTop:'1px solid #e2e8f0', paddingTop:'28px' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px' }}>
+                    <div>
+                      <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'18px' }}>
+                        <Heart style={{ width:20, height:20, color:'#f43f5e' }} />
+                        <h4 style={{ margin:0, fontSize:'16px', fontWeight:700, color:'#0f172a' }}>{t.benTitle}</h4>
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+                        {activeAnalysis.benefits.map((item:string, idx:number) => (
+                          <div key={idx} style={{ display:'flex', gap:'12px', alignItems:'flex-start', backgroundColor:'#ecfdf5', border:'1px solid #d1fae5', borderRadius:'18px', padding:'14px' }}>
+                            <Check style={{ width:20, height:20, color:'#16a34a', flexShrink:0, marginTop:'2px' }} />
+                            <span style={{ margin:0, color:'#0f172a', fontSize:'14px', lineHeight:1.7 }}>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'18px' }}>
+                        <Utensils style={{ width:20, height:20, color:'#f97316' }} />
+                        <h4 style={{ margin:0, fontSize:'16px', fontWeight:700, color:'#0f172a' }}>{t.useTitle}</h4>
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+                        {activeAnalysis.usages.map((item:string, idx:number) => (
+                          <div key={idx} style={{ display:'flex', gap:'12px', alignItems:'flex-start', backgroundColor:'#ffedd5', border:'1px solid #fed7aa', borderRadius:'18px', padding:'14px' }}>
+                            <Coffee style={{ width:20, height:20, color:'#d97706', flexShrink:0, marginTop:'2px' }} />
+                            <span style={{ margin:0, color:'#0f172a', fontSize:'14px', lineHeight:1.7 }}>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
 
-              <section className="bg-slate-50 border border-slate-200 p-5 rounded-2xl flex gap-3 print:bg-white">
-                <ShieldCheck className="w-6 h-6 text-slate-400 shrink-0 mt-0.5" />
-                <p className="text-xs sm:text-sm text-slate-500 leading-loose">
-                  <b className="text-slate-700">{t.disclaimerLabel}</b> {t.disclaimerText}
-                </p>
-              </section>
+                <section style={{ display:'flex', gap:'12px', alignItems:'flex-start', backgroundColor:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'20px', padding:'18px' }}>
+                  <ShieldCheck style={{ width:22, height:22, color:'#64748b', flexShrink:0, marginTop:'2px' }} />
+                  <p style={{ margin:0, fontSize:'13px', lineHeight:1.8, color:'#475569' }}><b style={{ color:'#0f172a' }}>{t.disclaimerLabel}</b> {t.disclaimerText}</p>
+                </section>
+              </div>
             </div>
 
             <div className="p-6 md:p-8 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-center gap-4 print:hidden">
                <div className="flex gap-3 w-full sm:w-auto">
                  <button
-                   onClick={() => { setScreen('home'); setAiResult(null); setImageSrc(''); }}
+                   onClick={() => { setScreen('home'); setAnalysisResult(null); setImageSrc(''); }}
                    className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-8 py-3.5 rounded-full font-medium transition-colors shadow-sm text-sm sm:text-base"
                  >
                    <RotateCcw className="w-5 h-5" /> {t.newBtn}
