@@ -2,8 +2,6 @@
 
 import { useState, useRef, type ChangeEvent } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 import { 
   Upload, AlertCircle, CheckCircle2, Droplet, 
   Activity, Utensils, Coffee, Heart, 
@@ -18,10 +16,6 @@ type TranslationStrings = {
   uploadTitle: string;
   uploadDesc: string;
   uploadAction: string;
-  downloadPNG: string;
-  downloadPDF: string;
-  downloadReport: string;
-  downloadModalTitle: string;
   uploadBtn: string;
   noteTitle: string;
   note1Title: string;
@@ -71,10 +65,6 @@ const translations: Record<'th' | 'en' | 'zh', TranslationStrings> = {
     uploadTitle: "คลิกเพื่อเลือกรูปภาพน้ำผึ้ง",
     uploadDesc: "รองรับไฟล์ JPG, PNG, HEIC (ขนาดไม่เกิน 10MB)",
     uploadAction: 'ถ่ายรูปหรืออัปโหลดภาพน้ำผึ้ง',
-    downloadPNG: 'ดาวน์โหลดเป็นรูปภาพ (PNG)',
-    downloadPDF: 'ดาวน์โหลดเป็นเอกสาร (PDF)',
-    downloadReport: 'ดาวน์โหลดใบรายงานผล',
-    downloadModalTitle: 'เลือกรูปแบบไฟล์ดาวน์โหลด',
     uploadBtn: "อัพโหลดรูปภาพ",
     noteTitle: "ข้อควรทราบก่อนใช้งาน",
     note1Title: "ประเมินเบื้องต้นเท่านั้น",
@@ -100,7 +90,7 @@ const translations: Record<'th' | 'en' | 'zh', TranslationStrings> = {
     useTitle: "การนำไปใช้",
     disclaimerLabel: "คำแนะนำและข้อจำกัด:",
     disclaimerText: "ผลลัพธ์นี้ประเมินจากการจำลองโครงสร้างภาพถ่ายด้วยระบบ AI ไม่สามารถใช้เป็นเอกสารอ้างอิงเพื่อยืนยันชนิดหรือความแท้ของน้ำผึ้งได้ หากต้องการผลการทดสอบที่แม่นยำ 100% เพื่อใช้ในเชิงพาณิชย์ กรุณาส่งตัวอย่างตรวจที่ห้องปฏิบัติการที่ได้รับการรับรองมาตรฐาน",
-    printBtn: "ดาวน์โหลดรายงาน PDF",
+    printBtn: "ดาวน์โหลด/พิมพ์รายงาน",
     newBtn: "วิเคราะห์ภาพใหม่",
     errNoKey: "ไม่พบ API Key ระบบกำลังแสดงข้อมูลจำลองเพื่อการทดสอบ UI",
     aiLangInstruction: "ตอบกลับเป็นภาษาไทยเท่านั้น"
@@ -124,10 +114,6 @@ const translations: Record<'th' | 'en' | 'zh', TranslationStrings> = {
     uploadTitle: "Click to select a honey image",
     uploadDesc: "Supports JPG, PNG, HEIC (Max 10MB)",
     uploadAction: 'Take photo or upload your honey image',
-    downloadPNG: 'Download as Image (PNG)',
-    downloadPDF: 'Download as Document (PDF)',
-    downloadReport: 'Download Report',
-    downloadModalTitle: 'Choose file format to download',
     uploadBtn: "Upload Image",
     noteTitle: "Important Notes",
     note1Title: "Preliminary Assessment Only",
@@ -153,7 +139,7 @@ const translations: Record<'th' | 'en' | 'zh', TranslationStrings> = {
     useTitle: "Usage",
     disclaimerLabel: "Disclaimer:",
     disclaimerText: "This result is based on an AI visual structural evaluation and cannot be used as a legal reference to confirm the type or authenticity of the honey. For 100% accurate commercial results, please submit samples to a certified laboratory.",
-    printBtn: "Download PDF Report",
+    printBtn: "Print/Download Report",
     newBtn: "Analyze New Image",
     errNoKey: "API Key not found. Displaying mock data for UI testing.",
     aiLangInstruction: "Respond strictly in English language."
@@ -177,10 +163,6 @@ const translations: Record<'th' | 'en' | 'zh', TranslationStrings> = {
     uploadTitle: "点击选择蜂蜜图片",
     uploadDesc: "支持 JPG, PNG, HEIC (最大 10MB)",
     uploadAction: '拍照或上传您的蜂蜜图片',
-    downloadPNG: '下载为图片 (PNG)',
-    downloadPDF: '下载为文档 (PDF)',
-    downloadReport: '下载分析报告',
-    downloadModalTitle: '选择要下载的文件格式',
     uploadBtn: "上传图片",
     noteTitle: "使用前须知",
     note1Title: "仅供初步评估",
@@ -206,7 +188,7 @@ const translations: Record<'th' | 'en' | 'zh', TranslationStrings> = {
     useTitle: "使用方法",
     disclaimerLabel: "免责声明:",
     disclaimerText: "此结果基于 AI 视觉结构评估，不能作为确认蜂蜜类型或真伪的法律参考。如需 100% 准确的商业测试结果，请将样品提交给认证实验室。",
-    printBtn: "下载 PDF 报告",
+    printBtn: "打印/下载报告",
     newBtn: "分析新图片",
     errNoKey: "未找到 API 密钥。显示模拟数据以进行 UI 测试。",
     aiLangInstruction: "必须使用简体中文回答。"
@@ -260,7 +242,6 @@ export default function App() {
   const t = translations[lang];
   const activeAnalysis = analysisResult?.resultsByLanguage[lang] ?? null;
   const reportRef = useRef<HTMLDivElement | null>(null);
-  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   const loadPreviewImage = (src: string) => {
     return new Promise<void>((resolve, reject) => {
@@ -475,72 +456,8 @@ Expected JSON structure:
     }
   };
 
-  const downloadAsPNG = async () => {
-    const element = document.getElementById('honey-report-card');
-    if (!element) return;
-    
-    // 1. ดึงสไตล์ชีตทั้งหมดบนหน้าเว็บมาสั่งปิดใช้งานชั่วคราว เพื่อบล็อกไม่ให้ html2canvas แครชจาก oklch ส่วนกลาง
-    const sheets = Array.from(document.styleSheets);
-    sheets.forEach(sheet => {
-      try { sheet.disabled = true; } catch (e) {}
-    });
-
-    try {
-      const canvas = await html2canvas(element, {
-        useCORS: true,
-        scale: 2,
-        backgroundColor: '#ffffff'
-      });
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = 'honey-dee-report.png';
-      link.href = dataUrl;
-      link.click();
-      setIsDownloadModalOpen(false);
-    } catch (error) {
-      console.error('PNG Download Error:', error);
-      alert('ไม่สามารถดาวน์โหลดรูปภาพได้ กรุณาลองใหม่อีกครั้ง');
-    } finally {
-      // 2. เมื่อทำงานเสร็จ (ไม่ว่าจะสำเร็จหรือ Error) ให้เปิดใช้งานสไตล์ชีตกลับมาทันที
-      sheets.forEach(sheet => {
-        try { sheet.disabled = false; } catch (e) {}
-      });
-    }
-  };
-
-  const downloadAsPDF = async () => {
-    const element = document.getElementById('honey-report-card');
-    if (!element) return;
-
-    // 1. ปิดใช้งานสไตล์ชีตทั้งหมดชั่วคราว
-    const sheets = Array.from(document.styleSheets);
-    sheets.forEach(sheet => {
-      try { sheet.disabled = true; } catch (e) {}
-    });
-
-    try {
-      const canvas = await html2canvas(element, {
-        useCORS: true,
-        scale: 2,
-        backgroundColor: '#ffffff'
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgWidth = 210;
-      const position = 0;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      pdf.save('honey-dee-report.pdf');
-      setIsDownloadModalOpen(false);
-    } catch (error) {
-      console.error('PDF Download Error:', error);
-      alert('ไม่สามารถดาวน์โหลด PDF ได้ กรุณาลองใหม่อีกครั้ง');
-    } finally {
-      // 2. เปิดใช้งานสไตล์ชีตกลับมาทันที
-      sheets.forEach(sheet => {
-        try { sheet.disabled = false; } catch (e) {}
-      });
-    }
+  const handlePrintReport = () => {
+    window.print();
   };
 
   return (
@@ -674,22 +591,6 @@ Expected JSON structure:
                     </div>
                   </li>
                 </ul>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Download selection modal */}
-        {isDownloadModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-2xl p-6 w-11/12 max-w-md shadow-xl">
-              <h3 className="text-lg font-bold mb-4">{t.downloadModalTitle}</h3>
-              <div className="flex gap-3">
-                <button onClick={() => downloadAsPNG()} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-3 rounded-lg">{t.downloadPNG}</button>
-                <button onClick={() => downloadAsPDF()} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white px-4 py-3 rounded-lg">{t.downloadPDF}</button>
-              </div>
-              <div className="mt-4 text-right">
-                <button onClick={() => setIsDownloadModalOpen(false)} className="text-sm text-slate-600">Cancel</button>
               </div>
             </div>
           </div>
@@ -843,10 +744,10 @@ Expected JSON structure:
                </div>
                <div className="flex gap-3 w-full sm:w-auto">
                  <button
-                   onClick={() => setIsDownloadModalOpen(true)}
+                     onClick={handlePrintReport}
                    className="w-full sm:w-auto flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-8 py-3.5 rounded-full font-medium transition-colors shadow-lg shadow-amber-600/20 text-sm sm:text-base"
                  >
-                   {t.downloadReport}
+                     {t.printBtn}
                  </button>
                </div>
             </div>
