@@ -492,50 +492,60 @@ Expected JSON structure:
     }
   };
 
-  const downloadPNG = async () => {
-    const reportNode = document.querySelector<HTMLDivElement>('#honey-report-card');
-    if (!reportNode) return;
+  const downloadAsPNG = async () => {
+    const element = document.getElementById('honey-report-card');
+    if (!element) return;
     try {
-      const canvas = await html2canvas(reportNode, { useCORS: true, scale: 2, backgroundColor: '#ffffff' });
+      const canvas = await html2canvas(element, {
+        useCORS: true,
+        allowTaint: true,
+        scale: 2,
+        backgroundColor: '#ffffff'
+      });
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
+      link.download = 'honey-dee-report.png';
       link.href = dataUrl;
-      link.download = `${t.brandShort.replace(/\s+/g, '_')}_${lang}_report.png`;
-      document.body.appendChild(link);
       link.click();
-      link.remove();
       setIsDownloadModalOpen(false);
-    } catch (err) {
-      console.error('PNG download failed', err);
-      setError((err as Error)?.message || 'Download failed');
+    } catch (error) {
+      console.error('PNG Download Error:', error);
+      alert('ไม่สามารถดาวน์โหลดรูปภาพได้ กรุณาลองใหม่อีกครั้ง');
     }
   };
 
-  const downloadPDF = async () => {
-    const reportNode = document.querySelector<HTMLDivElement>('#honey-report-card');
-    if (!reportNode) return;
+  const downloadAsPDF = async () => {
+    const element = document.getElementById('honey-report-card');
+    if (!element) return;
     try {
-      const canvas = await html2canvas(reportNode, { useCORS: true, scale: 2, backgroundColor: '#ffffff' });
+      const canvas = await html2canvas(element, {
+        useCORS: true,
+        allowTaint: true,
+        scale: 2,
+        backgroundColor: '#ffffff'
+      });
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const img = new Image();
-      img.src = imgData;
-      await new Promise((res) => (img.onload = res));
-      const imgW = img.width;
-      const imgH = img.height;
-      const ratio = Math.min(pageWidth / imgW, pageHeight / imgH);
-      const width = imgW * ratio;
-      const height = imgH * ratio;
-      const x = (pageWidth - width) / 2;
-      const y = (pageHeight - height) / 2;
-      pdf.addImage(imgData, 'PNG', x, y, width, height);
-      pdf.save(`${t.brandShort.replace(/\s+/g, '_')}_${lang}_report.pdf`);
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgWidth = 210;
+      const pageHeight = 295;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      pdf.save('honey-dee-report.pdf');
       setIsDownloadModalOpen(false);
-    } catch (err) {
-      console.error('PDF download failed', err);
-      setError((err as Error)?.message || 'Download failed');
+    } catch (error) {
+      console.error('PDF Download Error:', error);
+      alert('ไม่สามารถดาวน์โหลด PDF ได้ กรุณาลองใหม่อีกครั้ง');
     }
   };
 
@@ -678,8 +688,8 @@ Expected JSON structure:
             <div className="bg-white rounded-2xl p-6 w-11/12 max-w-md shadow-xl">
               <h3 className="text-lg font-bold mb-4">{t.downloadModalTitle}</h3>
               <div className="flex gap-3">
-                <button onClick={() => downloadPNG()} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-3 rounded-lg">{t.downloadPNG}</button>
-                <button onClick={() => downloadPDF()} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white px-4 py-3 rounded-lg">{t.downloadPDF}</button>
+                <button onClick={() => downloadAsPNG()} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-3 rounded-lg">{t.downloadPNG}</button>
+                <button onClick={() => downloadAsPDF()} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white px-4 py-3 rounded-lg">{t.downloadPDF}</button>
               </div>
               <div className="mt-4 text-right">
                 <button onClick={() => setIsDownloadModalOpen(false)} className="text-sm text-slate-600">Cancel</button>
