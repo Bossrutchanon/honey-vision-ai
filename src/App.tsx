@@ -330,7 +330,10 @@ export default function App() {
       }
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-3.6-flash',
+        systemInstruction: 'Analyze the honey image and return only one valid JSON object that exactly matches the requested schema with complete localized results for Thai (th), English (en), and Simplified Chinese (zh). Do not include markdown, code fences, or any text outside the JSON object.'
+      });
 
       const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm".
 Analyze this honey image and estimate the top 3 possible honey types.
@@ -392,7 +395,6 @@ Expected JSON structure:
 
       const response = await model.generateContent({
         contents: [
-          { role: 'system', parts: [{ text: 'Return only valid JSON for the requested schema in Thai, English, and Chinese.' }] },
           { role: 'user', parts: [ { text: prompt }, { inlineData: { mimeType, data: base64Data } } ] }
         ],
         generationConfig: { responseMimeType: 'application/json' }
