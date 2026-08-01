@@ -330,7 +330,7 @@ export default function App() {
       }
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
       const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm".
 Analyze this honey image and estimate the top 3 possible honey types.
@@ -403,8 +403,18 @@ Expected JSON structure:
         throw new Error('No data returned');
       }
 
-      const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      const parsedData = JSON.parse(cleanText);
+      const cleanText = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+      let parsedData: Record<string, any>;
+      try {
+        parsedData = JSON.parse(cleanText);
+      } catch (parseError) {
+        console.error('Failed to parse Gemini JSON response:', parseError, {
+          rawText: text,
+          cleanedText: cleanText
+        });
+        throw parseError;
+      }
 
       const getLocalized = (langKey: 'th' | 'en' | 'zh') => {
         const raw = parsedData[langKey] || {};
