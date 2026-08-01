@@ -330,7 +330,7 @@ export default function App() {
       }
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
 
       const prompt = `You are an expert AI in honey analysis for "Honey Dee Big Bee Farm".
 Analyze this honey image and estimate the top 3 possible honey types.
@@ -398,20 +398,20 @@ Expected JSON structure:
         generationConfig: { responseMimeType: 'application/json' }
       });
 
-      const text = response?.response?.text?.() || '';
-      if (!text) {
+      const rawText = response?.response?.text?.() || '';
+      if (!rawText) {
         throw new Error('No data returned');
       }
 
-      const cleanText = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      const cleanedText = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
 
       let parsedData: Record<string, any>;
       try {
-        parsedData = JSON.parse(cleanText);
+        parsedData = JSON.parse(cleanedText);
       } catch (parseError) {
         console.error('Failed to parse Gemini JSON response:', parseError, {
-          rawText: text,
-          cleanedText: cleanText
+          rawText,
+          cleanedText
         });
         throw parseError;
       }
@@ -454,7 +454,7 @@ Expected JSON structure:
       } else {
         setErrorType('general');
       }
-      setError(t.errReadFile);
+      setError(errorMessage || t.errReadFile);
       setScreen('home');
       setIsErrorModalOpen(true);
       setIsLoading(false);
@@ -839,7 +839,7 @@ Expected JSON structure:
               <p className="text-slate-600 leading-relaxed text-base mb-8 whitespace-pre-line">
                 {errorType === 'daily' && t.errorDailyDesc}
                 {errorType === 'rate' && t.errorRateDesc}
-                {errorType === 'general' && t.errorGeneralDesc}
+                {errorType === 'general' && (error || t.errorGeneralDesc)}
               </p>
 
               {/* Button */}
